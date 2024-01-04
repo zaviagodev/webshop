@@ -10,7 +10,10 @@ from frappe.utils import cint
 from webshop.webshop.product_data_engine.filters import ProductFiltersBuilder
 from webshop.webshop.product_data_engine.query import ProductQuery
 from webshop.webshop.doctype.override_doctype.item_group import get_child_groups_for_website
-
+from webshop.webshop.doctype.override_doctype.item_group import get_main_groups_for_website
+from webshop.webshop.shopping_cart.cart import get_party, get_address_docs
+from webshop.webshop.doctype.wishlist.wishlist import add_to_wishlist 
+from webshop.webshop.doctype.wishlist.wishlist import remove_from_wishlist
 
 @frappe.whitelist(allow_guest=True)
 def get_product_filter_data(query_args=None):
@@ -87,3 +90,39 @@ def get_product_filter_data(query_args=None):
 @frappe.whitelist(allow_guest=True)
 def get_guest_redirect_on_action():
 	return frappe.db.get_single_value("Webshop Settings", "redirect_on_action")
+
+
+@frappe.whitelist(allow_guest=True)
+def get_main_group():
+	return get_main_groups_for_website()
+
+
+@frappe.whitelist()
+def get_orders():
+    party = get_party()
+    lp_record = frappe.get_all("Sales Invoice", filters={"customer": party.name}, fields=["name","status","base_total","company","customer_name","creation"])
+    for invoice in lp_record:
+       items = frappe.get_all("Sales Invoice Item",filters={"parent": invoice["name"]},fields=["item_code", "item_name", "qty", "rate", "amount"])
+       invoice["items"] = items
+    return lp_record
+
+
+@frappe.whitelist()
+def get_shipping_methods():
+    party = get_party()
+    lp_record = frappe.get_all("Shipping Rule", filters={"custom_show_on_website": 1}, fields=["name","shipping_rule_type","shipping_amount"])
+    return lp_record
+
+
+
+
+@frappe.whitelist(allow_guest=True)
+def edit_product_wish(
+	name: str = None,
+	wished: bool = None,
+):
+	if wished:
+		add_to_wishlist(name)
+	else:
+		remove_from_wishlist(name)
+
