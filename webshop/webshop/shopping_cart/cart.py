@@ -705,6 +705,7 @@ def get_applicable_shipping_rules(party=None, quotation=None):
 		return [[rule, rule] for rule in shipping_rules]
 
 
+@frappe.whitelist()
 def get_shipping_rules(quotation=None, cart_settings=None):
 	if not quotation:
 		quotation = _get_cart_quotation()
