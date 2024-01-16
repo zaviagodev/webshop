@@ -119,6 +119,14 @@ class ProductQuery:
 			limit_start=start,
 			order_by="ranking desc",
 		)
+		
+		items_with_values = []
+		for item in items:
+			item_doc = frappe.get_doc("Website Item", item.name)
+			custom_images = item_doc.get("custom_multipleimges", [])
+			file_urls = [image.get("file_url") for image in custom_images]
+			item["slider_images"] = file_urls
+			items_with_values.append(item)
 
 		return items, count
 
