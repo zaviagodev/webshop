@@ -20,6 +20,7 @@ from frappe.website.utils import is_signup_disabled
 from frappe.utils import (
 	escape_html,
 )
+from webshop.webshop.shopping_cart.cart import _get_cart_quotation
 
 @frappe.whitelist(allow_guest=True)
 def get_product_filter_data(query_args=None):
@@ -185,3 +186,19 @@ def sign_up(email: str, full_name: str, redirect_to: str) -> tuple[int, str]:
 
         token = f"{user.api_key}:{user.get_password('api_secret')}"
         return {"message": 'Logged In', "token": token}
+
+
+@frappe.whitelist()
+def update_cart(cart):
+    quotation = _get_cart_quotation()
+    quotation.set("items", [])
+
+    if cart:
+        for item_code, qty in cart.items():
+            quotation.append("items", {
+                "item_code": item_code,
+                "qty": qty,
+            })
+    quotation.save()
+
+    return quotation
