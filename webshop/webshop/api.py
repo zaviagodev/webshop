@@ -199,6 +199,6 @@ def update_cart(cart):
                 "item_code": item_code,
                 "qty": qty,
             })
-    quotation.save()
+    quotation.save(ignore_permissions=True)
 
     return quotation
