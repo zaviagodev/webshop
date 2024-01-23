@@ -135,7 +135,7 @@ def edit_product_wish(
 
 
 @frappe.whitelist(allow_guest=True)
-def sign_up(email: str, full_name: str, redirect_to: str) -> tuple[int, str]:
+def sign_up(email: str, full_name: str, redirect_to: str,password) -> tuple[int, str]:
     if is_signup_disabled():
         frappe.throw(_("Sign Up is disabled"), title=_("Not Allowed"))
 
@@ -163,7 +163,7 @@ def sign_up(email: str, full_name: str, redirect_to: str) -> tuple[int, str]:
                 "email": email,
                 "first_name": escape_html(full_name),
                 "enabled": 1,
-                "new_password": random_string(10),
+                "new_password": password,
                 "user_type": "Website User",
             }
         )
