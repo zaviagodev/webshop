@@ -107,7 +107,7 @@ def get_main_group():
 @frappe.whitelist()
 def get_orders():
     party = get_party()
-    lp_record = frappe.get_all("Sales Invoice", filters={"customer": party.name}, fields=["name","status","base_total","company","customer_name","creation"])
+    lp_record = frappe.get_all("Sales Invoice", filters={"customer": party.name}, fields=["name","status","base_total","company","customer_name","creation","address_display"])
     for invoice in lp_record:
        items = frappe.get_all("Sales Invoice Item",filters={"parent": invoice["name"]},fields=["item_code", "item_name", "qty", "rate", "amount"])
        invoice["items"] = items
