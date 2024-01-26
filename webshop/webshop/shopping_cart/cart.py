@@ -277,7 +277,6 @@ def create_lead_for_item_inquiry(lead, subject, message):
 def get_terms_and_conditions(terms_name):
 	return frappe.db.get_value("Terms and Conditions", terms_name, "terms")
 
-
 @frappe.whitelist()
 def update_cart_address(address_type, address_name):
 	quotation = _get_cart_quotation()

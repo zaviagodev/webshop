@@ -20,7 +20,7 @@ from frappe.website.utils import is_signup_disabled
 from frappe.utils import (
 	escape_html,
 )
-from webshop.webshop.shopping_cart.cart import _get_cart_quotation
+from webshop.webshop.shopping_cart.cart import (_get_cart_quotation,apply_cart_settings,update_party)
 
 @frappe.whitelist(allow_guest=True)
 def get_product_filter_data(query_args=None):
@@ -78,12 +78,15 @@ def get_product_filter_data(query_args=None):
 		return {"exc": "Something went wrong!"}
 
 	# discount filter data
+ 
 	filters = {}
 	discounts = result["discounts"]
 
 	if discounts:
 		filter_engine = ProductFiltersBuilder()
 		filters["discount_filters"] = filter_engine.get_discount_filters(discounts)
+            
+    
 
 	return {
 		"items": result["items"] or [],
@@ -91,6 +94,7 @@ def get_product_filter_data(query_args=None):
 		"settings": engine.settings,
 		"sub_categories": sub_categories,
 		"items_count": result["items_count"],
+        "total_items" : frappe.db.count('Website Item', {'published': '1'})
 	}
 
 
@@ -107,7 +111,7 @@ def get_main_group():
 @frappe.whitelist()
 def get_orders():
     party = get_party()
-    lp_record = frappe.get_all("Sales Invoice", filters={"customer": party.name}, fields=["name","status","base_total","company","customer_name","creation","address_display"])
+    lp_record = frappe.get_all("Sales Invoice", filters={"customer": party.name}, fields=["name","shipping_address_name","status","base_total","grand_total","company","customer_name","creation","address_display"])
     for invoice in lp_record:
        items = frappe.get_all("Sales Invoice Item",filters={"parent": invoice["name"]},fields=["item_code", "item_name", "qty", "rate", "amount"])
        invoice["items"] = items
@@ -156,12 +160,24 @@ def sign_up(email: str, full_name: str, redirect_to: str,password) -> tuple[int,
             )
 
         from frappe.utils import random_string
+        at_index = email.find("@")
+        username = ''
+        if at_index != -1:
+            username = email[:at_index]
+            
+        base_username = username
+        count = 1
+        while frappe.db.get_value("User", {"username": username}):
+            count += 1
+            username = f"{base_username}{count}"
+            
 
         user = frappe.get_doc(
             {
                 "doctype": "User",
                 "email": email,
                 "first_name": escape_html(full_name),
+                "username": username,
                 "enabled": 1,
                 "new_password": password,
                 "user_type": "Website User",
@@ -199,6 +215,19 @@ def update_cart(cart):
                 "item_code": item_code,
                 "qty": qty,
             })
-    quotation.save(ignore_permissions=True)
-
-    return quotation
+    apply_cart_settings(quotation=quotation)
+    quotation.flags.ignore_permissions = True
+    quotation.save()
+    
+@frappe.whitelist()
+def update_profile(first_name=None, last_name=None, phone=None):
+    party = get_party()
+    user = frappe.get_doc("User", party.name)
+    if first_name is not None:
+        user.first_name = first_name
+    if last_name is not None:
+        user.last_name = last_name
+    if phone is not None:
+        user.phone = phone
+    user.flags.ignore_permissions = True
+    user.save()
