@@ -21,6 +21,8 @@ from frappe.utils import (
 	escape_html,
 )
 from webshop.webshop.shopping_cart.cart import (_get_cart_quotation,apply_cart_settings,update_party)
+from frappe.utils import nowdate, nowtime, cint
+
 
 @frappe.whitelist(allow_guest=True)
 def get_product_filter_data(query_args=None):
@@ -231,3 +233,71 @@ def update_profile(first_name=None, last_name=None, phone=None):
         user.phone = phone
     user.flags.ignore_permissions = True
     user.save()
+    
+@frappe.whitelist()
+def payment_info():
+    # payments = frappe.get_all('Storefront Website Settings', filters={'name': 'Storefront Website Settings'}, fields=['name', 'description'])
+    payments = frappe.get_doc("Storefront Website Settings", "Storefront Website Settings")
+    
+    payment_methods = []
+    
+    if payments.enable_promptpay_qr == 1:
+        payment_info = {
+            'name': payments.payment_method_title,
+            'key': 1,
+            'promptpay_qr_image': payments.upload_your_promptpay_qr_image,
+            'account_name': payments.promptpay_account_name,
+            'promptpay_number': payments.promptpay_number
+        }
+        payment_methods.append(payment_info)
+        
+    if payments.enable_bank_transfer == 1:
+        banks_list = frappe.get_all("Payment channel",filters={"parent": "Storefront Website Settings"},fields=["bank","bank_account_name","bank_account_number"])
+        payment_info = {
+            'name': payments.bank_title,
+            'key': 2,
+            'banks_list': banks_list
+        }
+        payment_methods.append(payment_info)
+    
+    return payment_methods
+
+
+@frappe.whitelist()
+def payment_entry(file, order_name, payment_info):
+    if order_name:
+        get_si = frappe.get_doc("Sales Invoice", order_name)
+        payment_id = get_si.custom_payment_method
+        web_settings = frappe.get_doc("Storefront Website Settings", "Storefront Website Settings")
+        mode_of_payment = ""
+        if payment_id == 1:
+            mode_of_payment = web_settings.mode_of_payment_for_qr
+        elif payment_id == 2:
+            mode_of_payment = web_settings.mode_of_payment_for_bank
+        _make_payment_entry(get_si, mode_of_payment, get_si.base_grand_total)
+    
+def _make_payment_entry(si, mode_of_payment, paid_amount):
+    
+    pe = frappe.new_doc('Payment Entry')
+    totalconverfactor = 0
+    pe.update({
+        'payment_type': 'Receive',
+        'posting_date': nowdate(),
+        'posting_time': nowtime(),
+        'mode_of_payment': mode_of_payment,
+        'paid_amount': paid_amount,
+        'received_amount': paid_amount,
+        'allocate_payment_amount': 1,
+        'party_type': 'Customer',
+        'party': si.customer,
+        'paid_from': si.debit_to,
+        "target_exchange_rate":1,
+        'paid_to': 'Cash - Z'
+    })
+    ffa = paid_amount
+    pe.append('references', {
+                'reference_doctype': 'Sales Invoice',
+                'reference_name': si.name,
+                'allocated_amount': ffa
+        })
+    pe.save(ignore_permissions=True)
