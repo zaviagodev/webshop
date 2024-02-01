@@ -6,6 +6,7 @@
  "engine": "InnoDB",
  "field_order": [
   "products_per_page",
+  "default_product_image",
   "filter_categories_section",
   "enable_field_filters",
   "filter_fields",
@@ -366,12 +367,17 @@
    "fieldtype": "Check",
    "label": "Enable Redisearch",
    "read_only_depends_on": "eval:!doc.is_redisearch_loaded"
+  },
+  {
+   "fieldname": "default_product_image",
+   "fieldtype": "Attach Image",
+   "label": "Default Product Image"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2022-04-01 18:35:56.106756",
+ "modified": "2024-01-16 14:01:38.301987",
  "modified_by": "Administrator",
  "module": "Webshop",
  "name": "Webshop Settings",
