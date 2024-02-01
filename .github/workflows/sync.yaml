@@ -21,7 +21,7 @@ jobs:
 
       - name: Sync with upstream
         run: |
-          git merge upstream/${{ github.ref_name }}
+          git merge --allow-unrelated-histories upstream/${{ github.ref_name }}
         
       - name: Push to origin
         run: |
