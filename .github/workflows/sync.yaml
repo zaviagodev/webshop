@@ -1,0 +1,28 @@
+name: Sync with upstream branch
+
+on:
+  push:
+    branches:
+      - version-*
+      - develop
+
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/frappe/webshop.git
+          git fetch upstream
+
+      - name: Sync with upstream
+        run: |
+          git merge upstream/${{ github.ref_name }}
+        
+      - name: Push to origin
+        run: |
+          git push origin ${{ github.ref_name }}
