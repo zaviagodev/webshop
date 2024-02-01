@@ -532,6 +532,7 @@ def set_taxes(quotation, cart_settings):
 	#
 	# 	# append taxes
 	quotation.append_taxes_from_master()
+	quotation.append_taxes_from_item_tax_template()
 
 
 def get_party(user=None):
@@ -571,6 +572,8 @@ def get_party(user=None):
 				"territory": get_root_of("Territory"),
 			}
 		)
+
+		customer.append("portal_users", {"user": user})
 
 		if debtors_account:
 			customer.update(
