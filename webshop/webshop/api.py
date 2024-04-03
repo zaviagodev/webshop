@@ -11,16 +11,17 @@ from webshop.webshop.product_data_engine.filters import ProductFiltersBuilder
 from webshop.webshop.product_data_engine.query import ProductQuery
 from webshop.webshop.doctype.override_doctype.item_group import get_child_groups_for_website
 from webshop.webshop.doctype.override_doctype.item_group import get_main_groups_for_website
-from webshop.webshop.shopping_cart.cart import get_party, get_address_docs
+from webshop.webshop.shopping_cart.cart import get_party, update_cart as _update_cart
 from webshop.webshop.doctype.wishlist.wishlist import add_to_wishlist 
 from webshop.webshop.doctype.wishlist.wishlist import remove_from_wishlist
+from frappe.utils.oauth import  redirect_post_login
 from frappe import  _
 from frappe.utils.password import update_password as _update_password
 from frappe.website.utils import is_signup_disabled
 from frappe.utils import (
 	escape_html,
 )
-from webshop.webshop.shopping_cart.cart import (_get_cart_quotation,apply_cart_settings,update_party)
+from webshop.webshop.shopping_cart.cart import (_get_cart_quotation)
 from frappe.utils import nowdate, nowtime, cint
 
 
@@ -76,6 +77,7 @@ def get_product_filter_data(query_args=None):
 			item_group=item_group,
 		)
 	except Exception:
+		print(frappe.get_traceback())
 		frappe.log_error("Product query with filter failed")
 		return {"exc": "Something went wrong!"}
 
@@ -111,14 +113,33 @@ def get_main_group():
 
 
 @frappe.whitelist()
-def get_orders():
+def get_orders(filters="{}", start=0, page_size=20):
     party = get_party()
-    lp_record = frappe.get_all("Sales Invoice", filters={"customer": party.name}, fields=["name","shipping_address_name","status","base_total","grand_total","company","customer_name","creation","address_display"])
-    for invoice in lp_record:
-       items = frappe.get_all("Sales Invoice Item",filters={"parent": invoice["name"]},fields=["item_code", "item_name", "qty", "rate", "amount"])
-       invoice["items"] = items
-    return lp_record
+    filters = json.loads(filters)
+    filters = {
+        **filters,
+        "customer": party.name,
+    }
+    order_list = frappe.db.get_all(
+         "Sales Order",
+         filters=filters,
+         fields="*",
+        limit_start=start,
+        limit_page_length=page_size,
+    )
+    count = frappe.db.count("Sales Order", filters=filters)
+    return {
+        "orders": order_list,
+        "count": count,
+    }
 
+@frappe.whitelist()
+def get_order(order_name):
+    party = get_party()
+    sales_order = frappe.get_last_doc("Sales Order", filters={"name": order_name, "customer": party.name})
+    if not sales_order:
+        frappe.throw(_("You are not allowed to access this order"))
+    return sales_order
 
 @frappe.whitelist()
 def get_shipping_methods():
@@ -129,19 +150,21 @@ def get_shipping_methods():
 
 
 
-@frappe.whitelist(allow_guest=True)
-def edit_product_wish(
-	name: str = None,
-	wished: bool = None,
+@frappe.whitelist()
+def update_wshlist(
+	item_codes: list = [],
 ):
-	if wished:
-		add_to_wishlist(name)
-	else:
-		remove_from_wishlist(name)
+    if frappe.db.exists("Wishlist", frappe.session.user):
+        wishlist = frappe.get_doc("Wishlist", frappe.session.user)
+        wishlist.items = []
+        wishlist.save(ignore_permissions=True)
+    for item_code in item_codes:
+        add_to_wishlist(item_code)  
+    return item_codes
 
 
 @frappe.whitelist(allow_guest=True)
-def sign_up(email: str, full_name: str, redirect_to: str,password) -> tuple[int, str]:
+def sign_up(email: str, full_name: str, password):
     if is_signup_disabled():
         frappe.throw(_("Sign Up is disabled"), title=_("Not Allowed"))
 
@@ -194,40 +217,46 @@ def sign_up(email: str, full_name: str, redirect_to: str,password) -> tuple[int,
         if default_role:
             user.add_roles(default_role)
         
-        api_secret = frappe.generate_hash(length=15)
-        if not user.api_key:
-            api_key = frappe.generate_hash(length=15)
-            user.api_key = api_key
-            user.api_secret = api_secret 
-            user.save()
-            user.reload()
+        # api_secret = frappe.generate_hash(length=15)
+        # if not user.api_key:
+        #     api_key = frappe.generate_hash(length=15)
+        #     user.api_key = api_key
+        #     user.api_secret = api_secret 
+        #     user.save()
+        #     user.reload()
 
-        token = f"{user.api_key}:{user.get_password('api_secret')}"
-        return {"message": 'Logged In', "token": token}
+        # token = f"{user.api_key}:{user.get_password('api_secret')}"
+
+        # use Login Manager to login
+        frappe.local.login_manager.login_as(user.name)
+
+        return {
+             "user": user.name,
+             "username": user.username,
+             "full_name": user.full_name,
+             "email": user.email
+        }
 
 
 @frappe.whitelist()
 def update_cart(cart):
     quotation = _get_cart_quotation()
-    quotation.set("items", [])
-
-    if cart:
-        for item_code, qty in cart.items():
-            quotation.append("items", {
-                "item_code": item_code,
-                "qty": qty,
-            })
-    apply_cart_settings(quotation=quotation)
-    quotation.flags.ignore_permissions = True
-    quotation.save()
+    if not quotation.as_dict().get("__islocal", 0):
+        for item in quotation.items:
+            frappe.delete_doc("Quotation Item", item.name, ignore_permissions=True)
+        quotation.save(ignore_permissions=True)
+    for item_code, qty in cart.items():
+        _update_cart(item_code, qty)
+    return _get_cart_quotation()
+    
     
 @frappe.whitelist()
 def update_profile(first_name=None, last_name=None, phone=None):
-    party = get_party()
-    user = frappe.get_doc("User", party.name)
+    user = frappe.get_doc("User", frappe.session.user)
     if first_name is not None:
         user.first_name = first_name
     if last_name is not None:
+        print("last_name", last_name)
         user.last_name = last_name
     if phone is not None:
         user.phone = phone
@@ -236,7 +265,6 @@ def update_profile(first_name=None, last_name=None, phone=None):
     
 @frappe.whitelist()
 def payment_info():
-    # payments = frappe.get_all('Storefront Website Settings', filters={'name': 'Storefront Website Settings'}, fields=['name', 'description'])
     payments = frappe.get_doc("Storefront Website Settings", "Storefront Website Settings")
     
     payment_methods = []
@@ -279,7 +307,6 @@ def payment_entry(file, order_name, payment_info):
 def _make_payment_entry(si, mode_of_payment, paid_amount):
     
     pe = frappe.new_doc('Payment Entry')
-    totalconverfactor = 0
     pe.update({
         'payment_type': 'Receive',
         'posting_date': nowdate(),

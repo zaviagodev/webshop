@@ -85,6 +85,56 @@ def get_billing_addresses(party=None):
 		if address.address_type == "Billing"
 	]
 
+@frappe.whitelist()
+def get_address(address_name):
+	portal_user = frappe.get_last_doc("Portal User", filters={
+		"user": frappe.session.user,
+		"parenttype": "Customer"
+	})
+	
+	print("portal_user => ", portal_user)
+
+	if not portal_user:
+		frappe.throw(_("Address not found"))
+
+	customer_link = frappe.get_last_doc("Dynamic Link", filters={
+		"link_name": portal_user.parent,
+		"link_doctype": "Customer",
+		"parenttype": "Address",
+		"parent": address_name
+	})
+
+	if not customer_link:
+		frappe.throw(_("Address not found"))
+
+	address = frappe.get_doc("Address", address_name)
+	return address.as_dict()
+
+@frappe.whitelist()
+def update_address(address_name, address):
+	portal_user = frappe.get_last_doc("Portal User", filters={
+		"user": frappe.session.user,
+		"parenttype": "Customer"
+	})
+	
+	if not portal_user:
+		frappe.throw(_("Address not found"))
+
+	customer_link = frappe.get_last_doc("Dynamic Link", filters={
+		"link_name": portal_user.parent,
+		"link_doctype": "Customer",
+		"parenttype": "Address",
+		"parent": address_name
+	})
+
+	if not customer_link:
+		frappe.throw(_("Address not found"))
+
+	address_doc = frappe.get_doc("Address", address_name)
+	address_doc.update(address)
+	address_doc.save(ignore_permissions=True)
+
+
 
 @frappe.whitelist()
 def place_order():
@@ -215,7 +265,7 @@ def update_cart(item_code, qty, additional_notes=None, with_items=False):
 			),
 		}
 	else:
-		return {"name": quotation.name}
+		return {"name": quotation.name if quotation else None}
 
 
 @frappe.whitelist()
@@ -562,21 +612,24 @@ def get_party(user=None):
 		if not cart_settings.enabled:
 			frappe.local.flags.redirect_location = "/contact"
 			raise frappe.Redirect
-		customer = frappe.new_doc("Customer")
+		
 		fullname = get_fullname(user)
-		customer.update(
-			{
-				"customer_name": fullname,
-				"customer_type": "Individual",
-				"customer_group": get_shopping_cart_settings().default_customer_group,
-				"territory": get_root_of("Territory"),
-			}
-		)
+		customer_doc = frappe.get_doc({
+			'doctype':"Customer",
+			'customer_name': fullname,
+			'email_id': user,
+			'email': user,
+			'type': 'Individual', 
+			'customer_group': get_shopping_cart_settings().default_customer_group,
+			'territory': get_root_of("Territory")
+		})
+		customer_doc.insert(ignore_permissions=True)
+		
 
-		customer.append("portal_users", {"user": user})
+		customer_doc.append("portal_users", {"user": user})
 
 		if debtors_account:
-			customer.update(
+			customer_doc.update(
 				{
 					"accounts": [
 						{"company": cart_settings.company, "account": debtors_account}
@@ -584,18 +637,18 @@ def get_party(user=None):
 				}
 			)
 
-		customer.flags.ignore_mandatory = True
-		customer.insert(ignore_permissions=True)
+		customer_doc.flags.ignore_mandatory = True
+		customer_doc.save(ignore_permissions=True)
 
 		contact = frappe.new_doc("Contact")
 		contact.update(
 			{"first_name": fullname, "email_ids": [{"email_id": user, "is_primary": 1}]}
 		)
-		contact.append("links", dict(link_doctype="Customer", link_name=customer.name))
+		contact.append("links", dict(link_doctype="Customer", link_name=customer_doc.name))
 		contact.flags.ignore_mandatory = True
 		contact.insert(ignore_permissions=True)
 
-		return customer
+		return customer_doc
 
 
 def get_debtors_account(cart_settings):
@@ -702,9 +755,7 @@ def get_applicable_shipping_rules(party=None, quotation=None):
 	shipping_rules = get_shipping_rules(quotation)
 
 	if shipping_rules:
-		rule_label_map = frappe.db.get_values("Shipping Rule", shipping_rules, "label")
-		# we need this in sorted order as per the position of the rule in the settings page
-		return [[rule, rule] for rule in shipping_rules]
+		return [frappe.get_doc("Shipping Rule", rule_name) for rule_name in shipping_rules]
 
 
 @frappe.whitelist()
@@ -729,6 +780,7 @@ def get_shipping_rules(quotation=None, cart_settings=None):
 				.where((sr_country.country == country) & (sr.disabled != 1))
 			)
 			result = query.run(as_list=True)
+			print("result => ", result)
 			shipping_rules = [x[0] for x in result]
 
 	return shipping_rules
@@ -755,7 +807,7 @@ def show_terms(doc):
 
 
 @frappe.whitelist(allow_guest=True)
-def apply_coupon_code(applied_code, applied_referral_sales_partner):
+def apply_coupon_code(applied_code, applied_referral_sales_partner=None):
 	quotation = True
 
 	if not applied_code:
