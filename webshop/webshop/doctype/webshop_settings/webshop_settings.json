@@ -7,6 +7,7 @@
  "field_order": [
   "products_per_page",
   "default_product_image",
+  "brand_logo",
   "filter_categories_section",
   "enable_field_filters",
   "filter_fields",
@@ -372,12 +373,17 @@
    "fieldname": "default_product_image",
    "fieldtype": "Attach Image",
    "label": "Default Product Image"
+  },
+  {
+   "fieldname": "brand_logo",
+   "fieldtype": "Attach Image",
+   "label": "Brand Logo"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2024-01-16 14:01:38.301987",
+ "modified": "2024-04-09 03:29:53.374665",
  "modified_by": "Administrator",
  "module": "Webshop",
  "name": "Webshop Settings",

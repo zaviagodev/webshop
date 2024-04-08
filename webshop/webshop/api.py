@@ -19,97 +19,98 @@ from frappe import  _
 from frappe.utils.password import update_password as _update_password
 from frappe.website.utils import is_signup_disabled
 from frappe.utils import (
-	escape_html,
+    escape_html,
 )
 from webshop.webshop.shopping_cart.cart import (_get_cart_quotation)
 from frappe.utils import nowdate, nowtime, cint
+from frappe.handler import upload_file
 
 
 @frappe.whitelist(allow_guest=True)
 def get_product_filter_data(query_args=None):
-	"""
-	Returns filtered products and discount filters.
+    """
+    Returns filtered products and discount filters.
 
-	Args:
-		query_args (dict): contains filters to get products list
+    Args:
+        query_args (dict): contains filters to get products list
 
-	Query Args filters:
-		search (str): Search Term.
-		field_filters (dict): Keys include item_group, brand, etc.
-		attribute_filters(dict): Keys include Color, Size, etc.
-		start (int): Offset items by
-		item_group (str): Valid Item Group
-		from_filters (bool): Set as True to jump to page 1
-	"""
-	if isinstance(query_args, str):
-		query_args = json.loads(query_args)
+    Query Args filters:
+        search (str): Search Term.
+        field_filters (dict): Keys include item_group, brand, etc.
+        attribute_filters(dict): Keys include Color, Size, etc.
+        start (int): Offset items by
+        item_group (str): Valid Item Group
+        from_filters (bool): Set as True to jump to page 1
+    """
+    if isinstance(query_args, str):
+        query_args = json.loads(query_args)
 
-	query_args = frappe._dict(query_args)
+    query_args = frappe._dict(query_args)
 
-	if query_args:
-		search = query_args.get("search")
-		field_filters = query_args.get("field_filters", {})
-		attribute_filters = query_args.get("attribute_filters", {})
-		start = cint(query_args.start) if query_args.get("start") else 0
-		item_group = query_args.get("item_group")
-		from_filters = query_args.get("from_filters")
-	else:
-		search, attribute_filters, item_group, from_filters = None, None, None, None
-		field_filters = {}
-		start = 0
+    if query_args:
+        search = query_args.get("search")
+        field_filters = query_args.get("field_filters", {})
+        attribute_filters = query_args.get("attribute_filters", {})
+        start = cint(query_args.start) if query_args.get("start") else 0
+        item_group = query_args.get("item_group")
+        from_filters = query_args.get("from_filters")
+    else:
+        search, attribute_filters, item_group, from_filters = None, None, None, None
+        field_filters = {}
+        start = 0
 
-	# if new filter is checked, reset start to show filtered items from page 1
-	if from_filters:
-		start = 0
+    # if new filter is checked, reset start to show filtered items from page 1
+    if from_filters:
+        start = 0
 
-	sub_categories = []
-	if item_group:
-		sub_categories = get_child_groups_for_website(item_group, immediate=True)
+    sub_categories = []
+    if item_group:
+        sub_categories = get_child_groups_for_website(item_group, immediate=True)
 
-	engine = ProductQuery()
+    engine = ProductQuery()
+    
+    try:
+        result = engine.query(
+            attribute_filters,
+            field_filters,
+            search_term=search,
+            start=start,
+            item_group=item_group,
+        )
+    except Exception:
+        print(frappe.get_traceback())
+        frappe.log_error("Product query with filter failed")
+        return {"exc": frappe.get_traceback()}
 
-	try:
-		result = engine.query(
-			attribute_filters,
-			field_filters,
-			search_term=search,
-			start=start,
-			item_group=item_group,
-		)
-	except Exception:
-		print(frappe.get_traceback())
-		frappe.log_error("Product query with filter failed")
-		return {"exc": "Something went wrong!"}
-
-	# discount filter data
+    # discount filter data
  
-	filters = {}
-	discounts = result["discounts"]
+    filters = {}
+    discounts = result["discounts"]
 
-	if discounts:
-		filter_engine = ProductFiltersBuilder()
-		filters["discount_filters"] = filter_engine.get_discount_filters(discounts)
+    if discounts:
+        filter_engine = ProductFiltersBuilder()
+        filters["discount_filters"] = filter_engine.get_discount_filters(discounts)
             
     
 
-	return {
-		"items": result["items"] or [],
-		"filters": filters,
-		"settings": engine.settings,
-		"sub_categories": sub_categories,
-		"items_count": result["items_count"],
+    return {
+        "items": result["items"] or [],
+        "filters": filters,
+        "settings": engine.settings,
+        "sub_categories": sub_categories,
+        "items_count": result["items_count"],
         "total_items" : frappe.db.count('Website Item', {'published': '1'})
-	}
+    }
 
 
 @frappe.whitelist(allow_guest=True)
 def get_guest_redirect_on_action():
-	return frappe.db.get_single_value("Webshop Settings", "redirect_on_action")
+    return frappe.db.get_single_value("Webshop Settings", "redirect_on_action")
 
 
 @frappe.whitelist(allow_guest=True)
 def get_main_group():
-	return get_main_groups_for_website()
+    return get_main_groups_for_website()
 
 
 @frappe.whitelist()
@@ -143,16 +144,12 @@ def get_order(order_name):
 
 @frappe.whitelist()
 def get_shipping_methods():
-    party = get_party()
     lp_record = frappe.get_all("Shipping Rule", filters={"custom_show_on_website": 1}, fields=["name","shipping_rule_type","shipping_amount"])
     return lp_record
 
-
-
-
 @frappe.whitelist()
 def update_wshlist(
-	item_codes: list = [],
+    item_codes: list = [],
 ):
     if frappe.db.exists("Wishlist", frappe.session.user):
         wishlist = frappe.get_doc("Wishlist", frappe.session.user)
@@ -216,6 +213,8 @@ def sign_up(email: str, full_name: str, password):
         default_role = frappe.db.get_single_value("Portal Settings", "default_role")
         if default_role:
             user.add_roles(default_role)
+
+        get_party(user=user.name)
         
         # api_secret = frappe.generate_hash(length=15)
         # if not user.api_key:
@@ -244,7 +243,8 @@ def update_cart(cart):
     if not quotation.as_dict().get("__islocal", 0):
         for item in quotation.items:
             frappe.delete_doc("Quotation Item", item.name, ignore_permissions=True)
-        quotation.save(ignore_permissions=True)
+        if quotation.items:
+            quotation.save(ignore_permissions=True)
     for item_code, qty in cart.items():
         _update_cart(item_code, qty)
     return _get_cart_quotation()
@@ -264,7 +264,7 @@ def update_profile(first_name=None, last_name=None, phone=None):
     user.save()
     
 @frappe.whitelist()
-def payment_info():
+def payment_methods():
     payments = frappe.get_doc("Storefront Website Settings", "Storefront Website Settings")
     
     payment_methods = []
@@ -280,7 +280,7 @@ def payment_info():
         payment_methods.append(payment_info)
         
     if payments.enable_bank_transfer == 1:
-        banks_list = frappe.get_all("Payment channel",filters={"parent": "Storefront Website Settings"},fields=["bank","bank_account_name","bank_account_number"])
+        banks_list = frappe.get_all("Payment Channel",filters={"parent": "Storefront Website Settings"},fields=["bank","bank_account_name","bank_account_number"])
         payment_info = {
             'name': payments.bank_title,
             'key': 2,
@@ -292,39 +292,45 @@ def payment_info():
 
 
 @frappe.whitelist()
-def payment_entry(file, order_name, payment_info):
-    if order_name:
-        get_si = frappe.get_doc("Sales Invoice", order_name)
-        payment_id = get_si.custom_payment_method
-        web_settings = frappe.get_doc("Storefront Website Settings", "Storefront Website Settings")
-        mode_of_payment = ""
-        if payment_id == 1:
-            mode_of_payment = web_settings.mode_of_payment_for_qr
-        elif payment_id == 2:
-            mode_of_payment = web_settings.mode_of_payment_for_bank
-        _make_payment_entry(get_si, mode_of_payment, get_si.base_grand_total)
+def confirm_payment(order_name, payment_info):
+    frappe.form_dict.is_private = True
+    bank_slip = upload_file()
+
+    if not bank_slip:
+        frappe.throw("Please upload bank slip")
     
-def _make_payment_entry(si, mode_of_payment, paid_amount):
+    payment_info = json.loads(payment_info)
+    web_settings = frappe.get_doc("Storefront Website Settings", "Storefront Website Settings")
     
-    pe = frappe.new_doc('Payment Entry')
-    pe.update({
-        'payment_type': 'Receive',
-        'posting_date': nowdate(),
-        'posting_time': nowtime(),
-        'mode_of_payment': mode_of_payment,
-        'paid_amount': paid_amount,
-        'received_amount': paid_amount,
-        'allocate_payment_amount': 1,
-        'party_type': 'Customer',
-        'party': si.customer,
-        'paid_from': si.debit_to,
-        "target_exchange_rate":1,
-        'paid_to': 'Cash - Z'
-    })
-    ffa = paid_amount
-    pe.append('references', {
-                'reference_doctype': 'Sales Invoice',
-                'reference_name': si.name,
-                'allocated_amount': ffa
-        })
-    pe.save(ignore_permissions=True)
+    # make sales invoice
+    from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
+    sales_invoice = make_sales_invoice(order_name, ignore_permissions=True)
+    sales_invoice.custom_channel = "Website"
+    for item in sales_invoice.items:
+        item.warehouse = None
+    # sales_invoice.set_target_warehouse = None
+    sales_invoice.save(ignore_permissions=True)
+    sales_invoice.submit()
+    print("sales_invoice", sales_invoice.name)
+
+    current_user = frappe.session.user
+    current_session_data = frappe.session.data
+    frappe.set_user("Administrator")
+    
+    # make payment entry    
+    from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+    payment_entry = get_payment_entry("Sales Invoice", sales_invoice.name)
+    payment_entry.custom_payment_file = bank_slip.get("file_url")
+    payment_entry.mode_of_payment = web_settings.mode_of_payment_for_qr if payment_info.get("payment_method_key") == "1" else web_settings.mode_of_payment_for_bank
+    payment_entry.reference_date = nowdate()
+    payment_entry.reference_no = sales_invoice.name
+    payment_entry.custom_bank = payment_info.get("bank") if payment_info.get("payment_method_key") == "2" else None
+    payment_entry.save(ignore_permissions=True)
+
+    frappe.set_user(current_user)
+    frappe.session.data = current_session_data
+
+    
+@frappe.whitelist(allow_guest=True)
+def get_config():
+    return frappe.get_doc("Webshop Settings")
