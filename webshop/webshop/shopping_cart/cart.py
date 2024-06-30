@@ -11,14 +11,14 @@ from frappe.utils.nestedset import get_root_of
 
 from erpnext.accounts.utils import get_account_name
 from webshop.webshop.doctype.webshop_settings.webshop_settings import (
-    get_shopping_cart_settings,
+	get_shopping_cart_settings,
 )
 from webshop.webshop.utils.product import get_web_item_qty_in_stock
 from erpnext.selling.doctype.quotation.quotation import _make_sales_order
 
 
 class WebsitePriceListMissingError(frappe.ValidationError):
-    pass
+	pass
 
 
 def set_cart_count(quotation=None):
@@ -57,7 +57,7 @@ def get_cart_quotation(doc=None):
 
 @frappe.whitelist()
 def get_addresses():
-    return get_address_docs()
+	return get_address_docs()
 
 @frappe.whitelist()
 def get_shipping_addresses(party=None):
@@ -96,6 +96,7 @@ def get_billing_addresses(party=None):
 
 @frappe.whitelist()
 def get_address(address_name):
+	print("//////////get_address///////////////")
 	portal_user = frappe.get_last_doc("Portal User", filters={
 		"user": frappe.session.user,
 		"parenttype": "Customer"
@@ -164,6 +165,15 @@ def delete_address(address_name):
 		frappe.throw(_("Address not found"))
 
 	frappe.db.set_value("Address", address_name, "disabled", 1)
+	
+	quotations = frappe.get_all("Quotation", filters={
+    "shipping_address_name": address_name
+	})
+	for quotation in quotations:
+		frappe.get_doc("Quotation", quotation.name).update({
+			"shipping_address_name": None,
+			"shipping_address": None
+		}).save(ignore_permissions=True)
 
 
 @frappe.whitelist()
@@ -218,7 +228,19 @@ def place_order():
 	if hasattr(frappe.local, "cookie_manager"):
 		frappe.local.cookie_manager.delete_cookie("cart_count")
 
-	return sales_order.name
+	# make sales invoice
+	from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
+	sales_invoice = make_sales_invoice(sales_order.name, ignore_permissions=True)
+	sales_invoice.custom_channel = "Website"
+	sales_invoice.update_stock  = 0 if cint(cart_settings.allow_items_not_in_stock) else 1
+	for item in sales_invoice.items:
+		item.warehouse = None
+	# sales_invoice.set_target_warehouse = None
+	sales_invoice.save(ignore_permissions=True)
+	sales_invoice.submit()
+	print("sales_invoice", sales_invoice.name)
+
+	return sales_invoice.name
 
 
 @frappe.whitelist()
@@ -499,10 +521,8 @@ def _get_cart_quotation(party=None):
 
 
 def update_party(fullname, company_name=None, mobile_no=None, phone=None):
-	print("//////////update_party///////////////")
 	party = get_party()
-	print("//////////update_party end///////////////")
-
+	
 	party.customer_name = company_name or fullname
 	party.customer_type = "Company" if company_name else "Individual"
 
@@ -658,10 +678,11 @@ def get_party(user=None):
 		fullname = get_fullname(user)
 		customer_doc = frappe.get_doc({
 			'doctype':"Customer",
-			'customer_name': fullname,
+			# 'customer_name': fullname,
+			'customer_name': user,
 			'email_id': user,
 			'email': user,
-			'type': 'Individual', 
+			'customer_type': 'Individual', 
 			'customer_group': get_shopping_cart_settings().default_customer_group,
 			'territory': get_root_of("Territory")
 		})
@@ -728,12 +749,12 @@ def get_debtors_account(cart_settings):
 
 
 def get_address_docs(
-    doctype=None,
-    txt=None,
-    filters=None,
-    limit_start=0,
-    limit_page_length=20,
-    party=None,
+	doctype=None,
+	txt=None,
+	filters=None,
+	limit_start=0,
+	limit_page_length=20,
+	party=None,
 ):
 	if not party:
 		print("//////////get_address_docs///////////////")
@@ -810,19 +831,15 @@ def get_shipping_rules(quotation=None, cart_settings=None):
 			"Address", quotation.shipping_address_name, "country"
 		)
 		if country:
-			sr_country = frappe.qb.DocType("Shipping Rule Country")
-			sr = frappe.qb.DocType("Shipping Rule")
-			query = (
-				frappe.qb.from_(sr_country)
-				.join(sr)
-				.on(sr.name == sr_country.parent)
-				.select(sr.name)
-				.distinct()
-				.where((sr_country.country == country) & (sr.disabled != 1))
-			)
-			result = query.run(as_list=True)
-			print("result => ", result)
-			shipping_rules = [x[0] for x in result]
+			res = frappe.get_all(
+       			"Shipping Rule",
+          		filters={"custom_show_on_website": 1, "disabled": 0},
+				or_filters=[
+					{"country": country},
+					{"country": ""},
+				],
+            )
+			shipping_rules = [x.get("name") for x in res]
 
 	return shipping_rules
 

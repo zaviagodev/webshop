@@ -113,6 +113,35 @@ def get_main_group():
     return get_main_groups_for_website()
 
 
+# @frappe.whitelist()
+# def get_orders(filters="{}", start=0, page_size=20):
+#     party = get_party()
+#     filters = json.loads(filters)
+#     filters = {
+#         **filters,
+#         "customer": party.name,
+#     }
+#     order_list = frappe.db.get_all(
+#          "Sales Order",
+#          filters=filters,
+#          fields="*",
+#         limit_start=start,
+#         limit_page_length=page_size,
+#     )
+#     count = frappe.db.count("Sales Order", filters=filters)
+#     return {
+#         "orders": order_list,
+#         "count": count,
+#     }
+
+# @frappe.whitelist()
+# def get_order(order_name):
+#     party = get_party()
+#     sales_order = frappe.get_last_doc("Sales Order", filters={"name": order_name, "customer": party.name})
+#     if not sales_order:
+#         frappe.throw(_("You are not allowed to access this order"))
+#     return sales_order
+
 @frappe.whitelist()
 def get_orders(filters="{}", start=0, page_size=20):
     party = get_party()
@@ -121,26 +150,26 @@ def get_orders(filters="{}", start=0, page_size=20):
         **filters,
         "customer": party.name,
     }
-    order_list = frappe.db.get_all(
-         "Sales Order",
+    invoice_list = frappe.db.get_all(
+         "Sales Invoice",
          filters=filters,
          fields="*",
         limit_start=start,
         limit_page_length=page_size,
     )
-    count = frappe.db.count("Sales Order", filters=filters)
+    count = frappe.db.count("Sales Invoice", filters=filters)
     return {
-        "orders": order_list,
+        "orders": invoice_list,
         "count": count,
     }
 
 @frappe.whitelist()
-def get_order(order_name):
+def get_order(invoice_name):
     party = get_party()
-    sales_order = frappe.get_last_doc("Sales Order", filters={"name": order_name, "customer": party.name})
-    if not sales_order:
+    sales_invoice = frappe.get_last_doc("Sales Invoice", filters={"name": invoice_name, "customer": party.name})
+    if not sales_invoice:
         frappe.throw(_("You are not allowed to access this order"))
-    return sales_order
+    return sales_invoice
 
 @frappe.whitelist()
 def get_shipping_methods():
@@ -168,9 +197,9 @@ def sign_up(email: str, full_name: str, password):
     user = frappe.db.get("User", {"email": email})
     if user:
         if user.enabled:
-            return 0, _("Already Registered")
+            return frappe.throw(_("Already Registered"))
         else:
-            return 0, _("Registered but disabled")
+            return frappe.throw(_("Registered but disabled"))
     else:
         if frappe.db.get_creation_count("User", 60) > 300:
             frappe.respond_as_web_page(
@@ -201,6 +230,7 @@ def sign_up(email: str, full_name: str, password):
                 "first_name": escape_html(full_name),
                 "username": username,
                 "enabled": 1,
+                "birth_date": None,
                 "new_password": password,
                 "user_type": "Website User",
             }
@@ -265,7 +295,7 @@ def update_profile(first_name=None, last_name=None, phone=None):
     
 @frappe.whitelist()
 def payment_methods():
-    payments = frappe.get_doc("Storefront Website Settings", "Storefront Website Settings")
+    payments = frappe.get_doc("Webshop Settings", "Webshop Settings")
     
     payment_methods = []
     
@@ -280,7 +310,7 @@ def payment_methods():
         payment_methods.append(payment_info)
         
     if payments.enable_bank_transfer == 1:
-        banks_list = frappe.get_all("Payment Channel",filters={"parent": "Storefront Website Settings"},fields=["bank","bank_account_name","bank_account_number"])
+        banks_list = frappe.get_all("Payment Channel",filters={"parent": "Webshop Settings"},fields=["bank","bank_account_name","bank_account_number"])
         payment_info = {
             'name': payments.bank_title,
             'key': 2,
@@ -292,7 +322,7 @@ def payment_methods():
 
 
 @frappe.whitelist()
-def confirm_payment(order_name, payment_info):
+def confirm_payment(invoice_name, payment_info):
     frappe.form_dict.is_private = True
     bank_slip = upload_file()
 
@@ -300,18 +330,18 @@ def confirm_payment(order_name, payment_info):
         frappe.throw("Please upload bank slip")
     
     payment_info = json.loads(payment_info)
-    web_settings = frappe.get_doc("Storefront Website Settings", "Storefront Website Settings")
+    web_settings = frappe.get_doc("Webshop Settings", "Webshop Settings")
     
-    # make sales invoice
-    from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
-    sales_invoice = make_sales_invoice(order_name, ignore_permissions=True)
-    sales_invoice.custom_channel = "Website"
-    for item in sales_invoice.items:
-        item.warehouse = None
-    # sales_invoice.set_target_warehouse = None
-    sales_invoice.save(ignore_permissions=True)
-    sales_invoice.submit()
-    print("sales_invoice", sales_invoice.name)
+    # # make sales invoice
+    # from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
+    # sales_invoice = make_sales_invoice(order_name, ignore_permissions=True)
+    # sales_invoice.custom_channel = "Website"
+    # for item in sales_invoice.items:
+    #     item.warehouse = None
+    # # sales_invoice.set_target_warehouse = None
+    # sales_invoice.save(ignore_permissions=True)
+    # sales_invoice.submit()
+    # print("sales_invoice", sales_invoice.name)
 
     current_user = frappe.session.user
     current_session_data = frappe.session.data
@@ -319,11 +349,11 @@ def confirm_payment(order_name, payment_info):
     
     # make payment entry    
     from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
-    payment_entry = get_payment_entry("Sales Invoice", sales_invoice.name)
+    payment_entry = get_payment_entry("Sales Invoice", invoice_name)
     payment_entry.custom_payment_file = bank_slip.get("file_url")
     payment_entry.mode_of_payment = web_settings.mode_of_payment_for_qr if payment_info.get("payment_method_key") == "1" else web_settings.mode_of_payment_for_bank
     payment_entry.reference_date = nowdate()
-    payment_entry.reference_no = sales_invoice.name
+    payment_entry.reference_no = invoice_name
     payment_entry.custom_bank = payment_info.get("bank") if payment_info.get("payment_method_key") == "2" else None
     payment_entry.save(ignore_permissions=True)
 

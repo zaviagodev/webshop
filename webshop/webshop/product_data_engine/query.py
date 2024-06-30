@@ -266,7 +266,7 @@ class ProductQuery:
 		if item.formatted_mrp:
 			item.discount = price_object.get("formatted_discount_percent") or price_object.get(
 				"formatted_discount_rate"
-			)
+			) or price_object.get("formatted_discount_amount")
 
 	def get_stock_availability(self, item):
 		"""Modify item object and add stock details."""
