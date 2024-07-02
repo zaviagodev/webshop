@@ -231,7 +231,7 @@ def place_order():
 	# make sales invoice
 	from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
 	sales_invoice = make_sales_invoice(sales_order.name, ignore_permissions=True)
-	sales_invoice.custom_channel = "Website"
+	sales_invoice.custom_sales_channel = "Website"
 	sales_invoice.update_stock  = 0 if cint(cart_settings.allow_items_not_in_stock) else 1
 	for item in sales_invoice.items:
 		item.warehouse = None

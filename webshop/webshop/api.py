@@ -354,7 +354,7 @@ def confirm_payment(invoice_name, payment_info):
     payment_entry.mode_of_payment = web_settings.mode_of_payment_for_qr if payment_info.get("payment_method_key") == "1" else web_settings.mode_of_payment_for_bank
     payment_entry.reference_date = nowdate()
     payment_entry.reference_no = invoice_name
-    payment_entry.custom_bank = payment_info.get("bank") if payment_info.get("payment_method_key") == "2" else None
+    payment_entry.custom_bank_name = payment_info.get("bank") if payment_info.get("payment_method_key") == "2" else None
     payment_entry.save(ignore_permissions=True)
 
     frappe.set_user(current_user)
