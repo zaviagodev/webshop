@@ -10,16 +10,17 @@ frappe.ui.form.on("Item", {
 					freeze: true,
 					freeze_message: __("Publishing Item ..."),
 					callback: function(result) {
-						frappe.msgprint({
-							message: __("Website Item {0} has been created.",
-								[repl('<a href="/app/website-item/%(item_encoded)s" class="strong">%(item)s</a>', {
-									item_encoded: encodeURIComponent(result.message[0]),
-									item: result.message[1]
-								})]
-							),
-							title: __("Published"),
-							indicator: "green"
-						});
+						// frappe.msgprint({
+						// 	message: __("Website Item {0} has been created.",
+						// 		[repl('<a href="/app/website-item/%(item_encoded)s" class="strong">%(item)s</a>', {
+						// 			item_encoded: encodeURIComponent(result.message[0]),
+						// 			item: result.message[1]
+						// 		})]
+						// 	),
+						// 	title: __("Published"),
+						// 	indicator: "green"
+						// });
+						window.location.href="/app/website-item/"+result.message[0]
 					}
 				});
 			}, __('Actions'));

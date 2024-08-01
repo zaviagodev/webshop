@@ -7,7 +7,6 @@
  "field_order": [
   "site_name",
   "products_per_page",
-  "default_product_image",
   "brand_logo",
   "site_favicon",
   "default_language",
@@ -35,6 +34,7 @@
   "company",
   "price_list",
   "enabled",
+  "add_to_cart_label",
   "store_page_docs",
   "column_break_21",
   "default_customer_group",
@@ -395,11 +395,6 @@
    "read_only_depends_on": "eval:!doc.is_redisearch_loaded"
   },
   {
-   "fieldname": "default_product_image",
-   "fieldtype": "Attach Image",
-   "label": "Default Product Image"
-  },
-  {
    "fieldname": "brand_logo",
    "fieldtype": "Attach Image",
    "label": "Brand Logo"
@@ -543,12 +538,17 @@
    "fieldname": "help_url",
    "fieldtype": "Data",
    "label": "Help URL"
+  },
+  {
+   "fieldname": "add_to_cart_label",
+   "fieldtype": "Data",
+   "label": "Add To Cart Label"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2024-06-19 20:59:29.146382",
+ "modified": "2024-07-11 13:11:39.212717",
  "modified_by": "Administrator",
  "module": "Webshop",
  "name": "Webshop Settings",

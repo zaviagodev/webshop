@@ -167,8 +167,10 @@ def delete_address(address_name):
 	frappe.db.set_value("Address", address_name, "disabled", 1)
 	
 	quotations = frappe.get_all("Quotation", filters={
+    "status": "Draft",
     "shipping_address_name": address_name
 	})
+ 
 	for quotation in quotations:
 		frappe.get_doc("Quotation", quotation.name).update({
 			"shipping_address_name": None,
@@ -231,6 +233,8 @@ def place_order():
 	# make sales invoice
 	from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
 	sales_invoice = make_sales_invoice(sales_order.name, ignore_permissions=True)
+	print("sales_order.base_discount_amount", sales_order.base_discount_amount)
+	print("base_discount_amoun", sales_invoice.base_discount_amount)
 	sales_invoice.custom_sales_channel = "Website"
 	sales_invoice.update_stock  = 0 if cint(cart_settings.allow_items_not_in_stock) else 1
 	for item in sales_invoice.items:
@@ -238,7 +242,7 @@ def place_order():
 	# sales_invoice.set_target_warehouse = None
 	sales_invoice.save(ignore_permissions=True)
 	sales_invoice.submit()
-	print("sales_invoice", sales_invoice.name)
+	# print("sales_invoice", sales_invoice.name)
 
 	return sales_invoice.name
 

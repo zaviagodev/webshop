@@ -62,7 +62,24 @@ def get_product_info_for_website(item_code, skip_quotation_creation=False):
 		else:
 			stock_status = get_web_item_qty_in_stock(item_code, "website_warehouse")
 	
-	fields = [ "name", "item_code", "web_item_name", "web_long_description", "short_description", "thumbnail", "item_group", "stock_uom", "slideshow", "website_specifications", "has_variants"]
+	fields = [ 
+           		"name",
+             	"item_code",
+              	"web_item_name",
+               "web_long_description",
+               "short_description",
+               "thumbnail",
+               "item_group",
+               "stock_uom",
+               "slideshow",
+               "website_images",
+               "website_specifications",
+               "has_variants",
+               "custom_return__refund_title",
+               "custom_long_description",
+               "custom_shipping_title",
+               "custom_shipping_description"
+    ]
 	values = frappe.get_cached_value("Website Item", {"item_code": item_code}, fields)
 	product = dict(zip(fields, values))
 	

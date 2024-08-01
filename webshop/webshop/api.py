@@ -156,6 +156,7 @@ def get_orders(filters="{}", start=0, page_size=20):
          fields="*",
         limit_start=start,
         limit_page_length=page_size,
+        order_by="modified desc"
     )
     count = frappe.db.count("Sales Invoice", filters=filters)
     return {
@@ -167,9 +168,13 @@ def get_orders(filters="{}", start=0, page_size=20):
 def get_order(invoice_name):
     party = get_party()
     sales_invoice = frappe.get_last_doc("Sales Invoice", filters={"name": invoice_name, "customer": party.name})
+    have_payment_entry = frappe.db.exists("Payment Entry Reference", {"reference_name": invoice_name})
     if not sales_invoice:
         frappe.throw(_("You are not allowed to access this order"))
-    return sales_invoice
+    return {
+        "have_payment_entry": True if have_payment_entry else False,
+        **sales_invoice.as_dict()
+    }
 
 @frappe.whitelist()
 def get_shipping_methods():
@@ -314,7 +319,12 @@ def payment_methods():
         payment_info = {
             'name': payments.bank_title,
             'key': 2,
-            'banks_list': banks_list
+            'banks_list': [ {
+                'bank': bank.get("bank"),
+                'bank_account_name': bank.get("bank_account_name"),
+                'bank_account_number': bank.get("bank_account_number"),
+                'custom_bank_logo': frappe.db.get_value("Bank", bank.get("bank"), "custom_bank_logo")
+            } for bank in banks_list]
         }
         payment_methods.append(payment_info)
     
