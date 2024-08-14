@@ -413,6 +413,7 @@
   },
   {
    "fieldname": "default_language",
+   "default": "en",
    "fieldtype": "Link",
    "label": "Default Language",
    "options": "Language",
