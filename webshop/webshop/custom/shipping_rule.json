@@ -63,5 +63,9 @@
    "width": null
   }
  ],
+ "custom_perms": [],
+ "doctype": "Shipping Rule",
+ "links": [],
+ "property_setters": [],
  "sync_on_migrate": 1
 }
