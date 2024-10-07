@@ -191,6 +191,18 @@ def add_custom_fields():
 		]
 	}
 
+	frappe.make_property_setter(
+		{
+			"doctype": "Item Group",
+			"doctype_or_field": "DocType",
+			"fieldname": "allow_guest_to_view",
+			"property": "allow_guest_to_view",
+			"value": 1,
+			"property_type": "Check"
+		},
+		is_system_generated=True,
+	)
+
 	return create_custom_fields(custom_fields)
 
 def navbar_add_products_link():
