@@ -5,11 +5,33 @@ if TYPE_CHECKING:
 
 import frappe
 from frappe import _
+from frappe.model.document import Document
 
 from webshop.webshop.shopping_cart.cart import get_party
 import erpnext
 
-class CustomWebSiteItem():
+def find(pred, iterable):
+  for element in iterable:
+      if pred(element):
+          return element
+  return None
+
+class CustomWebSiteItem(Document):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.default_pricing_rule = self.get_default_pricing_rule()
+        # print("default_pricing_rule => ", self.default_pricing_rule)
+        if self.default_pricing_rule:
+            old_on_sale, old_discount_type, old_discount_value = frappe.db.get_value('Item', self.item_code, ['custom_on_sale', 'custom_discount_type', 'custom_discount_value'])
+            self.custom_on_sale = (0 if self.default_pricing_rule.disable else 1) if self.custom_on_sale == old_on_sale else self.custom_on_sale
+            self.custom_discount_type = self.default_pricing_rule.rate_or_discount if self.custom_discount_type == old_discount_type else self.custom_discount_type
+            self.custom_discount_value = (self.default_pricing_rule.rate or self.default_pricing_rule.discount_amount or self.default_pricing_rule.discount_percentage) if self.custom_discount_value == old_discount_value else self.custom_discount_value
+                      
+        self.item_price = self.get_default_item_price()
+        if(self.item_price and self.item_price.price_list_rate):
+            old_rate = frappe.db.get_value('Item', self.item_code, 'standard_rate')
+            self.standard_rate = self.item_price.price_list_rate if self.standard_rate == old_rate else self.standard_rate
     
     def before_validate(self):
         self.website_image = self.website_images[0].file_url if self.website_images else None
@@ -126,7 +148,26 @@ class CustomWebSiteItem():
                         }
                     )
                     item_price.insert()
-                    self.item_price = item_price    
+                    self.item_price = item_price
+                    
+    def get_default_pricing_rule(self):
+        price_list = frappe.db.get_single_value("Webshop Settings", "price_list") or frappe.db.get_value("Price List", _("Website Selling"))
+        pr_list = frappe.get_all('Pricing Rule', filters={'title': self.item_code, 'apply_on': "Item Code",'for_price_list': price_list}, fields=['name'])
+        return frappe.get_doc('Pricing Rule', pr_list[0].name) if pr_list else None  
+    
+    def get_default_item_price(self):
+        default_price_list = find(lambda default: default.default_price_list != None, self.item_defaults)
+        item_price = frappe.get_all(
+            'Item Price',
+            filters={
+                'item_code': self.item_code,
+                "currency": erpnext.get_default_currency(),
+                'selling': 1,
+                'price_list': default_price_list if default_price_list else _("Website Selling")
+            },
+            fields=['name', 'price_list_rate']
+        )
+        return item_price[0] if item_price else None  
                 
     def get_changed_fields(self):
         changed_fields = []
