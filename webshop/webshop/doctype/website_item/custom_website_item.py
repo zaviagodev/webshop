@@ -19,8 +19,8 @@ class CustomWebSiteItem():
         currency = frappe.defaults.get_global_default('currency')
         if self.custom_on_sale:
             if self.custom_on_sale:
-                discount_in_percentage = self.custom_set_discount_value if self.custom_select_discount_type_ == 'Discount Percentage' else self.custom_set_discount_value / self.custom_price * 100 if self.custom_price else 0
-                discount_in_value = (self.custom_set_discount_value / 100) * self.custom_price if self.custom_select_discount_type_ == 'Discount Percentage' else self.custom_set_discount_value
+                discount_in_percentage = self.custom_discount_value if self.custom_discount_type == 'Discount Percentage' else self.custom_discount_value / self.custom_price * 100 if self.custom_price else 0
+                discount_in_value = (self.custom_discount_value / 100) * self.custom_price if self.custom_discount_type == 'Discount Percentage' else self.custom_discount_value
                 custom_sale_price = self.custom_sales_price = (self.custom_price or 0) - (discount_in_value or 0)
         else:
             discount_in_percentage = 0
@@ -73,10 +73,10 @@ class CustomWebSiteItem():
             pricing_rule = frappe.get_doc('Pricing Rule', existing_rules)
             pricing_rule.update({
                 'disable': 0 if self.custom_on_sale else 1,
-                'rate_or_discount': self.custom_select_discount_type_,
-                'rate': self.custom_set_discount_value if self.custom_select_discount_type_ == 'Rate' else 0,
-                'discount_amount': self.custom_set_discount_value if self.custom_select_discount_type_ == 'Discount Amount' else 0,
-                'discount_percentage': self.custom_set_discount_value if self.custom_select_discount_type_ == 'Discount Percentage' else 0
+                'rate_or_discount': self.custom_discount_type,
+                'rate': self.custom_discount_value if self.custom_discount_type == 'Rate' else 0,
+                'discount_amount': self.custom_discount_value if self.custom_discount_type == 'Discount Amount' else 0,
+                'discount_percentage': self.custom_discount_value if self.custom_discount_type == 'Discount Percentage' else 0
             })
             # Save the document
             pricing_rule.save()
@@ -95,10 +95,10 @@ class CustomWebSiteItem():
             'title': self.item_code,
             'pricing_rule_name': self.item_code,
             'currency': erpnext.get_default_currency(),
-            'rate_or_discount': self.custom_select_discount_type_,
-            'rate': self.custom_set_discount_value if self.custom_select_discount_type_ == 'Rate' else 0,
-            'discount_amount': self.custom_set_discount_value if self.custom_select_discount_type_ == 'Discount Amount' else 0,
-            'discount_percentage': self.custom_set_discount_value if self.custom_select_discount_type_ == 'Discount Percentage' else 0,
+            'rate_or_discount': self.custom_discount_type,
+            'rate': self.custom_discount_value if self.custom_discount_type == 'Rate' else 0,
+            'discount_amount': self.custom_discount_value if self.custom_discount_type == 'Discount Amount' else 0,
+            'discount_percentage': self.custom_discount_value if self.custom_discount_type == 'Discount Percentage' else 0,
             'items': [{
                 'item_code': self.item_code
             }]
