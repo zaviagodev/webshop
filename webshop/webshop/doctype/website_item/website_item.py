@@ -532,12 +532,13 @@ def make_website_item(doc, save=True):
 	for field in fields_to_map:
 		website_item.update({field: doc.get(field)})
 
-	website_item.short_description=doc.get("custom_short_description")
-	website_item.web_long_description=doc.get("description")
-	website_item.custom_return__refund_title=doc.get("custom_return__refund_title")
-	website_item.custom_long_description=doc.get("custom_return__refund_description")
-	website_item.custom_shipping_title=doc.get("custom_shipping_title")
-	website_item.custom_shipping_description=doc.get("custom_shipping_description")
+	website_item.short_description= doc.get("custom_short_description")
+	website_item.web_long_description= doc.get("description")
+	website_item.custom_return__refund_title= doc.get("custom_return__refund_title")
+	website_item.custom_long_description= doc.get("custom_return__refund_description")
+	website_item.custom_shipping_title= doc.get("custom_shipping_title")
+	website_item.custom_shipping_description= doc.get("custom_shipping_description")
+	website_item.custom_sale_price = doc.get("custom_sale_price")
 	# img_doc= frappe.get_doc("File","")
 	# const_img={
 	# 	"image": img_doc,

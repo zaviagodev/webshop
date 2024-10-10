@@ -1,4 +1,3 @@
-import json
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -6,30 +5,11 @@ if TYPE_CHECKING:
 
 import frappe
 from frappe import _
-from frappe.utils import cint, cstr, flt, random_string
-from frappe.website.doctype.website_slideshow.website_slideshow import get_slideshow
-from frappe.website.website_generator import WebsiteGenerator
 
-from webshop.webshop.doctype.item_review.item_review import get_item_reviews
-from webshop.webshop.redisearch_utils import (
-    delete_item_from_index,
-    insert_item_to_index,
-    update_index_for_item,
-)
-from webshop.webshop.shopping_cart.cart import _set_price_list
-from webshop.webshop.doctype.override_doctype.item_group import (
-    get_parent_item_groups,
-    invalidate_cache_for,
-)
-from erpnext.stock.doctype.item.item import Item
-from erpnext.utilities.product import get_price
 from webshop.webshop.shopping_cart.cart import get_party
-from webshop.webshop.variant_selector.item_variants_cache import (
-    ItemVariantsCacheManager,
-)
 import erpnext
 
-class CustomWebSiteItem( ):
+class CustomWebSiteItem():
     
     def before_validate(self):
         self.website_image = self.website_images[0].file_url if self.website_images else None
@@ -70,25 +50,19 @@ class CustomWebSiteItem( ):
         '''
 
     def before_save(self):
-        if self.is_new():
-            if self.item_code:
-                item_doc = frappe.get_doc('Item', self.item_code)
-                self.custom_price = item_doc.standard_rate
-                self.custom_on_sale = item_doc.custom_on_sale
-                self.custom_select_discount_type_ = item_doc.custom_discount_type
-                self.custom_set_discount_value = item_doc.custom_discount_value
-                self.custom_sales_price = item_doc.custom_sale_price
-                self.custom_sale_price = item_doc.custom_sales_price_1
-                self.update_price()
-                self.update_pricing_rule() 
-                
-        fields = self.get_changed_fields()
-        if fields and len(fields) >= 2:
-            if self.custom_price:
-                self.update_price()
-                self.update_pricing_rule() 
-        else:
-            pass
+        old_doc = self.get_doc_before_save()
+        if not old_doc:
+            return
+        changed_fields, initilaized_fields = self.get_changed_fields()
+        if (self.custom_discount_type or self.custom_discount_value) and self.default_pricing_rule == None:
+            self.add_pricing_rule()
+        elif "custom_on_sale" in changed_fields or "custom_discount_type" in changed_fields or "custom_discount_value" in changed_fields:
+            self.update_pricing_rule()
+            
+        if "standard_rate" in initilaized_fields:
+            self.add_price(self.name, self.standard_rate)
+        elif "standard_rate" in changed_fields:
+            self.update_price()
 
      
     def update_pricing_rule(self):
