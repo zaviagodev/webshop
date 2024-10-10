@@ -10,12 +10,6 @@ from frappe.model.document import Document
 from webshop.webshop.shopping_cart.cart import get_party
 import erpnext
 
-def find(pred, iterable):
-  for element in iterable:
-      if pred(element):
-          return element
-  return None
-
 class CustomWebSiteItem(Document):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -156,7 +150,7 @@ class CustomWebSiteItem(Document):
         return frappe.get_doc('Pricing Rule', pr_list[0].name) if pr_list else None  
     
     def get_default_item_price(self):
-        default_price_list = find(lambda default: default.default_price_list != None, self.item_defaults)
+        default_price_list = frappe.db.get_single_value("Webshop Settings", "price_list") or frappe.db.get_value("Price List", _("Website Selling"))
         item_price = frappe.get_all(
             'Item Price',
             filters={
