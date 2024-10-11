@@ -86,6 +86,7 @@ def add_custom_fields():
 				"insert_after": "default_manufacturer_part_no",
 				"label": "Published In Website",
 				"read_only": 1,
+				"no_copy": 1,
 			}
 		],
 		"Item Group": [
@@ -190,6 +191,18 @@ def add_custom_fields():
 		]
 	}
 
+	frappe.make_property_setter(
+		{
+			"doctype": "Item Group",
+			"doctype_or_field": "DocType",
+			"fieldname": "allow_guest_to_view",
+			"property": "allow_guest_to_view",
+			"value": 1,
+			"property_type": "Check"
+		},
+		is_system_generated=True,
+	)
+
 	return create_custom_fields(custom_fields)
 
 def navbar_add_products_link():
@@ -219,8 +232,9 @@ patches = [
 	"make_homepage_products_website_items",
 	"fetch_thumbnail_in_website_items",
 	"convert_to_website_item_in_item_card_group_template",
-	"shopping_cart_to_ecommerce"
+	"shopping_cart_to_ecommerce",
 	"copy_custom_field_filters_to_website_item",
+	"add_homepage_field",
 ]
 
 def run_patches():
