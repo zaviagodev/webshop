@@ -1,3 +1,4 @@
+import json
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -5,44 +6,46 @@ if TYPE_CHECKING:
 
 import frappe
 from frappe import _
-from frappe.model.document import Document
+from frappe.utils import cint, cstr, flt, random_string
+from frappe.website.doctype.website_slideshow.website_slideshow import get_slideshow
+from frappe.website.website_generator import WebsiteGenerator
 
+from webshop.webshop.doctype.item_review.item_review import get_item_reviews
+from webshop.webshop.redisearch_utils import (
+    delete_item_from_index,
+    insert_item_to_index,
+    update_index_for_item,
+)
+from webshop.webshop.shopping_cart.cart import _set_price_list
+from webshop.webshop.doctype.override_doctype.item_group import (
+    get_parent_item_groups,
+    invalidate_cache_for,
+)
+from erpnext.stock.doctype.item.item import Item
+from erpnext.utilities.product import get_price
 from webshop.webshop.shopping_cart.cart import get_party
+from webshop.webshop.variant_selector.item_variants_cache import (
+    ItemVariantsCacheManager,
+)
 import erpnext
+from erpnext.controllers.item_variant import get_variant
 
-class CustomWebSiteItem(Document):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
-        self.default_pricing_rule = self.get_default_pricing_rule()
-        # print("default_pricing_rule => ", self.default_pricing_rule)
-        if self.default_pricing_rule:
-            old_on_sale, old_discount_type, old_discount_value = frappe.db.get_value('Item', self.item_code, ['custom_on_sale', 'custom_discount_type', 'custom_discount_value'])
-            self.custom_on_sale = (0 if self.default_pricing_rule.disable else 1) if self.custom_on_sale == old_on_sale else self.custom_on_sale
-            self.custom_discount_type = self.default_pricing_rule.rate_or_discount if self.custom_discount_type == old_discount_type else self.custom_discount_type
-            self.custom_discount_value = (self.default_pricing_rule.rate or self.default_pricing_rule.discount_amount or self.default_pricing_rule.discount_percentage) if self.custom_discount_value == old_discount_value else self.custom_discount_value
-                      
-        self.item_price = self.get_default_item_price()
-        if(self.item_price and self.item_price.price_list_rate):
-            old_rate = frappe.db.get_value('Item', self.item_code, 'standard_rate')
-            self.standard_rate = self.item_price.price_list_rate if self.standard_rate == old_rate else self.standard_rate
-    
-    def before_validate(self):
-        self.website_image = self.website_images[0].file_url if self.website_images else None
+class CustomWebSiteItem( ):
     
     @property
     def custom_website_pricing_virtual(self):
         currency = frappe.defaults.get_global_default('currency')
         if self.custom_on_sale:
             if self.custom_on_sale:
-                discount_in_percentage = self.custom_discount_value if self.custom_discount_type == 'Discount Percentage' else self.custom_discount_value / self.custom_price * 100 if self.custom_price else 0
-                discount_in_value = (self.custom_discount_value / 100) * self.custom_price if self.custom_discount_type == 'Discount Percentage' else self.custom_discount_value
+                discount_in_percentage = self.custom_set_discount_value if self.custom_select_discount_type_ == 'Discount Percentage' else self.custom_set_discount_value / self.custom_price * 100 if self.custom_price else 0
+                discount_in_value = (self.custom_set_discount_value / 100) * self.custom_price if self.custom_select_discount_type_ == 'Discount Percentage' else self.custom_set_discount_value
                 custom_sale_price = self.custom_sales_price = (self.custom_price or 0) - (discount_in_value or 0)
         else:
             discount_in_percentage = 0
             discount_in_value = 0
             custom_sale_price = 0
-            custom_price = self.custom_price 
+            custom_price = self.custom_price
             
             
         custom_sale_price = float(custom_sale_price) if isinstance(custom_sale_price, str) else custom_sale_price
@@ -66,19 +69,25 @@ class CustomWebSiteItem(Document):
         '''
 
     def before_save(self):
-        old_doc = self.get_doc_before_save()
-        if not old_doc:
-            return
-        changed_fields, initilaized_fields = self.get_changed_fields()
-        if (self.custom_discount_type or self.custom_discount_value) and self.default_pricing_rule == None:
-            self.add_pricing_rule()
-        elif "custom_on_sale" in changed_fields or "custom_discount_type" in changed_fields or "custom_discount_value" in changed_fields:
-            self.update_pricing_rule()
-            
-        if "standard_rate" in initilaized_fields:
-            self.add_price(self.name, self.standard_rate)
-        elif "standard_rate" in changed_fields:
-            self.update_price()
+        if self.is_new():
+            if self.item_code:
+                item_doc = frappe.get_doc('Item', self.item_code)
+                self.custom_price = item_doc.standard_rate
+                self.custom_on_sale = item_doc.custom_on_sale
+                self.custom_select_discount_type_ = item_doc.custom_discount_type
+                self.custom_set_discount_value = item_doc.custom_discount_value
+                self.custom_sales_price = item_doc.custom_sale_price
+                self.custom_sale_price = item_doc.custom_sales_price_1
+                self.update_price()
+                self.update_pricing_rule() 
+                
+        fields = self.get_changed_fields()
+        if fields and len(fields) >= 2:
+            if self.custom_price:
+                self.update_price()
+                self.update_pricing_rule() 
+        else:
+            pass
 
      
     def update_pricing_rule(self):
@@ -89,10 +98,10 @@ class CustomWebSiteItem(Document):
             pricing_rule = frappe.get_doc('Pricing Rule', existing_rules)
             pricing_rule.update({
                 'disable': 0 if self.custom_on_sale else 1,
-                'rate_or_discount': self.custom_discount_type,
-                'rate': self.custom_discount_value if self.custom_discount_type == 'Rate' else 0,
-                'discount_amount': self.custom_discount_value if self.custom_discount_type == 'Discount Amount' else 0,
-                'discount_percentage': self.custom_discount_value if self.custom_discount_type == 'Discount Percentage' else 0
+                'rate_or_discount': self.custom_select_discount_type_,
+                'rate': self.custom_set_discount_value if self.custom_select_discount_type_ == 'Rate' else 0,
+                'discount_amount': self.custom_set_discount_value if self.custom_select_discount_type_ == 'Discount Amount' else 0,
+                'discount_percentage': self.custom_set_discount_value if self.custom_select_discount_type_ == 'Discount Percentage' else 0
             })
             # Save the document
             pricing_rule.save()
@@ -111,10 +120,10 @@ class CustomWebSiteItem(Document):
             'title': self.item_code,
             'pricing_rule_name': self.item_code,
             'currency': erpnext.get_default_currency(),
-            'rate_or_discount': self.custom_discount_type,
-            'rate': self.custom_discount_value if self.custom_discount_type == 'Rate' else 0,
-            'discount_amount': self.custom_discount_value if self.custom_discount_type == 'Discount Amount' else 0,
-            'discount_percentage': self.custom_discount_value if self.custom_discount_type == 'Discount Percentage' else 0,
+            'rate_or_discount': self.custom_select_discount_type_,
+            'rate': self.custom_set_discount_value if self.custom_select_discount_type_ == 'Rate' else 0,
+            'discount_amount': self.custom_set_discount_value if self.custom_select_discount_type_ == 'Discount Amount' else 0,
+            'discount_percentage': self.custom_set_discount_value if self.custom_select_discount_type_ == 'Discount Percentage' else 0,
             'items': [{
                 'item_code': self.item_code
             }]
@@ -142,26 +151,7 @@ class CustomWebSiteItem(Document):
                         }
                     )
                     item_price.insert()
-                    self.item_price = item_price
-                    
-    def get_default_pricing_rule(self):
-        price_list = frappe.db.get_single_value("Webshop Settings", "price_list") or frappe.db.get_value("Price List", _("Website Selling"))
-        pr_list = frappe.get_all('Pricing Rule', filters={'title': self.item_code, 'apply_on': "Item Code",'for_price_list': price_list}, fields=['name'])
-        return frappe.get_doc('Pricing Rule', pr_list[0].name) if pr_list else None  
-    
-    def get_default_item_price(self):
-        default_price_list = frappe.db.get_single_value("Webshop Settings", "price_list") or frappe.db.get_value("Price List", _("Website Selling"))
-        item_price = frappe.get_all(
-            'Item Price',
-            filters={
-                'item_code': self.item_code,
-                "currency": erpnext.get_default_currency(),
-                'selling': 1,
-                'price_list': default_price_list if default_price_list else _("Website Selling")
-            },
-            fields=['name', 'price_list_rate']
-        )
-        return item_price[0] if item_price else None  
+                    self.item_price = item_price    
                 
     def get_changed_fields(self):
         changed_fields = []
@@ -197,9 +187,120 @@ def get_item_data_for_web_item(reference,item_name):
         frappe.response['message'] = "None"
 
 @frappe.whitelist() 
-def get_item_images_for_web_item_from_script(main_item_code):
-    main_item = frappe.get_doc("Item",main_item_code)
-    if( main_item is not None ):
-        frappe.response['message'] = main_item.custom_images
-    else:
-        frappe.response['message'] = "None"
+def get_images_from_item(item_code, website_item):
+    item = frappe.get_doc("Item", item_code)
+    if( item is not None ):
+        if website_item:
+            website_item = frappe.get_doc("Website Item", website_item)
+            if website_item:
+                website_item.website_images = []
+                for custom_image in item.get("custom_images"):
+                    image = frappe.copy_doc(frappe.get_doc("File", custom_image.get("image"))).update({
+                        "attached_to_doctype": "Website Item",
+                        "attached_to_name": website_item.name,
+                        "attached_to_field": "website_images",
+                    }).insert()
+                    website_item.append("website_images", {
+                        "file_url": image.file_url,
+                        "image": image.name,
+                    })
+                website_item.save()
+        
+        
+        
+@frappe.whitelist()
+def make_website_item(doc, save=True):
+    print("custom => make_website_item")
+    """
+    Make Website Item from Item. Used via Form UI or patch.
+    """
+    if not doc:
+        return
+    if isinstance(doc, str):
+        doc = json.loads(doc)
+    if frappe.db.exists("Website Item", {"item_code": doc.get("item_code")}):
+        message = _("Website Item already exists against {0}").format(
+            frappe.bold(doc.get("item_code"))
+        )
+        frappe.throw(message, title=_("Already Published"))
+    website_item = frappe.new_doc("Website Item")
+    website_item.autoname()
+    website_item.web_item_name = doc.get("item_name")
+    fields_to_map = [
+        "item_code",
+        "item_name",
+        "item_group",
+        "stock_uom",
+        "brand",
+        "has_variants",
+        "variant_of",
+        "description",
+        "custom_return__refund_title",
+        "custom_shipping_title",
+        "custom_shipping_description"
+    ]
+    for field in fields_to_map:
+        website_item.update({field: doc.get(field)})
+    website_item.short_description=doc.get("custom_short_description")
+    website_item.web_long_description=doc.get("description")
+    website_item.custom_long_description=doc.get("custom_return__refund_description")
+    
+    if not frappe.flags.in_migrate and (
+        doc.get("image") and not website_item.website_image
+    ):
+        website_item.website_image = doc.get("image")
+    
+    for custom_image in doc.get("custom_images", []):
+        image = frappe.copy_doc(frappe.get_doc("File", custom_image.get("image"))).update({
+            "attached_to_doctype": "Website Item",
+            "attached_to_name": website_item.name,
+            "attached_to_field": "website_images",
+        }).insert()
+        website_item.append("website_images", {
+            "file_url": image.file_url,
+            "image": image.name,
+        })
+    
+    if not save:
+        return website_item
+    
+    website_item.insert(set_name=website_item.name)
+    
+    if doc.get("has_variants"):
+        variants_list = []
+        variants = doc.get("custom__item_product_variants")
+        if variants:
+            for variant in variants:
+                variants_list.append({
+                    "variant": variant["variant"],
+                    "data_hwpc": variant["data_hwpc"],
+                    "status": variant["status"]
+                })
+        website_item.set("custom__item_product_variants", variants_list)
+        frappe.enqueue(
+            "webshop.webshop.doctype.website_item.custom_website_item.make_website_variants",
+            item_code=doc.get("item_code"),
+            now=frappe.flags.in_test,
+        )
+        website_item.save()
+        
+    insert_item_to_index(website_item)
+    return [website_item.name, website_item.web_item_name]
+
+
+def make_website_variants(item_code):
+    variants = frappe.get_all("Item", filters={"variant_of": item_code}, fields=["name", "item_name"])
+    for variant in variants:
+        doc = frappe.get_doc("Item", variant.name)
+        make_website_item(doc)
+        # if item_code:
+        #     insert_item_pricing(item_code, variant_price=doc.standard_rate)
+        
+# def insert_item_pricing(item_code, price_list='Standard Selling', variant_price=0.0):
+#     existing_prices = frappe.get_all('Item Price', filters={'item_code': item_code}, fields=['name', 'price_list_rate'])
+#     if existing_prices:
+#         frappe.db.set_value('Item Price', existing_prices[0].name, 'price_list_rate', variant_price)
+#         frappe.db.set_value('Website Item', item_code, 'standard_rate', variant_price)
+#     else:
+#         CustomItem.add_price(item_code, variant_price)
+#         frappe.db.set_value('Website Item', item_code, 'standard_rate', variant_price)
