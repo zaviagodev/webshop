@@ -77,7 +77,7 @@ class CustomWebSiteItem( ):
                 self.custom_select_discount_type_ = item_doc.custom_discount_type
                 self.custom_set_discount_value = item_doc.custom_discount_value
                 self.custom_sales_price = item_doc.custom_sale_price_not_virtual
-                self.custom_sale_price = item_doc.custom_sales_price_1
+                self.custom_sale_price = item_doc.custom_sale_price_not_virtual
                 self.update_price()
                 self.update_pricing_rule() 
                 
