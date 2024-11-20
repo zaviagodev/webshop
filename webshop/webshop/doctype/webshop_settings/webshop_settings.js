@@ -3,6 +3,13 @@
 
 frappe.ui.form.on("Webshop Settings", {
 	onload: function(frm) {
+		const tab = frappe.route_options?.initial_tab;
+		if (tab) {
+			frm.layout.select_tab(tab);
+			// remove the tab from url
+			window.history.replaceState(null, null, window.location.href.replace(window.location.search, ""));
+		}
+		
 		if(frm.doc.__onload && frm.doc.__onload.quotation_series) {
 			frm.fields_dict.quotation_series.df.options = frm.doc.__onload.quotation_series;
 			frm.refresh_field("quotation_series");
