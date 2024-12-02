@@ -7,6 +7,7 @@ if TYPE_CHECKING:
 import frappe
 from frappe import _
 from frappe.utils import cint, cstr, flt, random_string
+from frappe.core.doctype.file.utils import get_local_image, get_web_image
 from frappe.website.doctype.website_slideshow.website_slideshow import get_slideshow
 from frappe.website.website_generator import WebsiteGenerator
 
@@ -70,16 +71,16 @@ class CustomWebSiteItem( ):
 
     def before_save(self):
         if self.is_new():
-            if self.item_code:
-                item_doc = frappe.get_doc('Item', self.item_code)
-                self.custom_price = item_doc.standard_rate
+            item_doc = frappe.get_doc('Item', self.item_code)
+            self.custom_price = item_doc.standard_rate
+            if item_doc.custom_on_sale:
                 self.custom_on_sale = item_doc.custom_on_sale
                 self.custom_select_discount_type_ = item_doc.custom_discount_type
                 self.custom_set_discount_value = item_doc.custom_discount_value
                 self.custom_sales_price = item_doc.custom_sale_price_not_virtual
-                self.custom_sale_price = item_doc.custom_sale_price_not_virtual
-                self.update_price()
-                self.update_pricing_rule() 
+                self.custom_sale_price = item_doc.custom_sales_price_1
+            self.update_price()
+            self.update_pricing_rule() 
                 
         fields = self.get_changed_fields()
         if fields and len(fields) >= 2:
@@ -195,7 +196,10 @@ def get_images_from_item(item_code, website_item):
             if website_item:
                 website_item.website_images = []
                 for custom_image in item.get("custom_images"):
-                    image = frappe.copy_doc(frappe.get_doc("File", custom_image.get("image"))).update({
+                    custom_image_doc = frappe.get_doc("File", custom_image.get("image"))
+                    file_name, ext = custom_image_doc.file_name.split(".")
+                    custom_image_doc.file_name = f"{file_name[:134]}.{ext}"
+                    image = frappe.copy_doc(custom_image_doc).update({
                         "attached_to_doctype": "Website Item",
                         "attached_to_name": website_item.name,
                         "attached_to_field": "website_images",
@@ -249,9 +253,11 @@ def make_website_item(doc, save=True):
         doc.get("image") and not website_item.website_image
     ):
         website_item.website_image = doc.get("image")
-    
     for custom_image in doc.get("custom_images", []):
-        image = frappe.copy_doc(frappe.get_doc("File", custom_image.get("image"))).update({
+        custom_image_doc = frappe.get_doc("File", custom_image.get("image"))
+        file_name, ext = custom_image_doc.file_name.split(".")
+        custom_image_doc.file_name = f"{file_name[:134]}.{ext}"
+        image = frappe.copy_doc(custom_image_doc).update({
             "attached_to_doctype": "Website Item",
             "attached_to_name": website_item.name,
             "attached_to_field": "website_images",
