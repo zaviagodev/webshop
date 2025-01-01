@@ -6,7 +6,7 @@ import json
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from erpnext.stock.doctype.item.item import Item
+	from erpnext.stock.doctype.item.item import Item
 
 import frappe
 from frappe import _
@@ -16,23 +16,28 @@ from frappe.website.website_generator import WebsiteGenerator
 
 from webshop.webshop.doctype.item_review.item_review import get_item_reviews
 from webshop.webshop.redisearch_utils import (
-    delete_item_from_index,
-    insert_item_to_index,
-    update_index_for_item,
+	delete_item_from_index,
+	insert_item_to_index,
+	update_index_for_item,
 )
 from webshop.webshop.shopping_cart.cart import _set_price_list
 from webshop.webshop.doctype.override_doctype.item_group import (
-    get_parent_item_groups,
-    invalidate_cache_for,
+	get_parent_item_groups,
+	invalidate_cache_for,
 )
 from erpnext.stock.doctype.item.item import Item
 from erpnext.utilities.product import get_price
 from webshop.webshop.shopping_cart.cart import get_party
 from webshop.webshop.variant_selector.item_variants_cache import (
-    ItemVariantsCacheManager,
+	ItemVariantsCacheManager,
 )
 from webshop.webshop.doctype.website_item.custom_website_item import CustomWebSiteItem
-class WebsiteItem(WebsiteGenerator,CustomWebSiteItem):
+from marketplace_integration.marketplace.shopee_manager.manager_proxy import (
+	shopee_manager,
+)
+
+
+class WebsiteItem(WebsiteGenerator, CustomWebSiteItem):
 	website = frappe._dict(
 		page_title_field="web_item_name",
 		condition_field="published",
@@ -310,7 +315,6 @@ class WebsiteItem(WebsiteGenerator,CustomWebSiteItem):
 					filters={"parent": attr.attribute},
 					order_by="idx asc",
 				):
-
 					if attr_value.attribute_value in attribute_values_available.get(
 						attr.attribute, []
 					):
@@ -426,7 +430,7 @@ def invalidate_item_variants_cache_for_website(doc):
 	Rebuild ItemVariantsCacheManager via Item or Website Item
 
 	Args:
-		doc (Item): item of which cache should be cleared
+			doc (Item): item of which cache should be cleared
 	"""
 	item_code = None
 	is_web_item = doc.get("published_in_website") or doc.get("published")
@@ -449,7 +453,7 @@ def invalidate_cache_for_web_item(doc):
 	"""
 	Invalidate Website Item Group cache and rebuild ItemVariantsCacheManager
 	Args:
-		doc (Item): document against which cache should be cleared
+			doc (Item): document against which cache should be cleared
 	"""
 	invalidate_cache_for(doc, doc.item_group)
 
@@ -527,18 +531,17 @@ def make_website_item(doc, save=True):
 		"variant_of",
 		"description",
 		"custom_return__refund_title",
-  		"custom_shipping_title",
+		"custom_shipping_title",
 		"custom_shipping_description",
 	]
 
-	
 	for field in fields_to_map:
 		website_item.update({field: doc.get(field)})
 
-	website_item.short_description=doc.get("custom_short_description")
-	website_item.web_long_description=doc.get("description")
-	website_item.custom_long_description=doc.get("custom_return__refund_description")
- 
+	website_item.short_description = doc.get("custom_short_description")
+	website_item.web_long_description = doc.get("description")
+	website_item.custom_long_description = doc.get("custom_return__refund_description")
+
 	# img_doc= frappe.get_doc("File","")
 	# const_img={
 	# 	"image": img_doc,
@@ -550,7 +553,6 @@ def make_website_item(doc, save=True):
 	# 	# website_item.custom_images=const_img
 	# frappe.msgprint(str(const_img))
 	# Needed for publishing/mapping via Form UI only
-	
 
 	if not frappe.flags.in_migrate and (
 		doc.get("image") and not website_item.website_image
@@ -561,8 +563,58 @@ def make_website_item(doc, save=True):
 		return website_item
 
 	website_item.save()
-	
+
 	# Add to search cache
 	insert_item_to_index(website_item)
 
 	return [website_item.name, website_item.web_item_name]
+
+
+@frappe.whitelist()
+def make_shopee_item(doc, save=True):
+	if not doc:
+		return
+
+	if isinstance(doc, str):
+		doc = json.loads(doc)
+
+	doc_name = doc.get("item_name")
+
+	filter = {
+		"item_name": doc_name,
+		"status": ["NORMAL", "BANNED", "UNLIST", "REVIEWING"],
+	}
+	searched_product = shopee_manager.search_products(filter)
+
+	for _item_id, value in searched_product.items():
+		if value.get("item_name") == doc_name:
+			message = _("Website Item already exists against {0}").format(
+				frappe.bold(doc.get("item_code"))
+			)
+			frappe.throw(message, title=_("Already Published"))
+
+	price = 0
+	item_price_list = frappe.get_list(
+		"Item Price",
+		filters={"item_code": doc.get("item_code")},
+		fields=["price_list_rate"],
+	)
+	if item_price_list:
+		price = item_price_list[0].get("price_list_rate")
+
+	fields_to_map = {
+		"item_name": "item_name",
+		"description": "description",
+		"has_models": "has_varients",
+		"item_code": "item_sku",
+	}
+
+	shopee_item = frappe.new_doc("Shopee Item")
+	shopee_item.item_name = doc_name
+	shopee_item.name = "temp_" + frappe.generate_hash(length=10)
+	shopee_item.original_price = price
+	
+	for shopee_item_field, webshop_field in fields_to_map.items():
+		shopee_item.update({shopee_item_field: doc.get(webshop_field)})
+
+	return shopee_item.as_dict()
