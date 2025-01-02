@@ -32,9 +32,11 @@ from webshop.webshop.variant_selector.item_variants_cache import (
 	ItemVariantsCacheManager,
 )
 from webshop.webshop.doctype.website_item.custom_website_item import CustomWebSiteItem
-from marketplace_integration.marketplace.shopee_manager.manager_proxy import (
-	shopee_manager,
-)
+
+# from marketplace_integration.marketplace.shopee_manager.manager_proxy import (
+# 	shopee_manager,
+# )
+from marketplace_integration.marketplace.lazada_manager import lazada_manager
 
 
 class WebsiteItem(WebsiteGenerator, CustomWebSiteItem):
@@ -430,7 +432,7 @@ def invalidate_item_variants_cache_for_website(doc):
 	Rebuild ItemVariantsCacheManager via Item or Website Item
 
 	Args:
-			doc (Item): item of which cache should be cleared
+					doc (Item): item of which cache should be cleared
 	"""
 	item_code = None
 	is_web_item = doc.get("published_in_website") or doc.get("published")
@@ -453,7 +455,7 @@ def invalidate_cache_for_web_item(doc):
 	"""
 	Invalidate Website Item Group cache and rebuild ItemVariantsCacheManager
 	Args:
-			doc (Item): document against which cache should be cleared
+					doc (Item): document against which cache should be cleared
 	"""
 	invalidate_cache_for(doc, doc.item_group)
 
@@ -571,50 +573,105 @@ def make_website_item(doc, save=True):
 
 
 @frappe.whitelist()
-def make_shopee_item(doc, save=True):
+def make_lazada_item(doc, save=True):
 	if not doc:
 		return
 
 	if isinstance(doc, str):
 		doc = json.loads(doc)
 
-	doc_name = doc.get("item_name")
-
-	filter = {
-		"item_name": doc_name,
-		"status": ["NORMAL", "BANNED", "UNLIST", "REVIEWING"],
-	}
-	searched_product = shopee_manager.search_products(filter)
-
-	for _item_id, value in searched_product.items():
-		if value.get("item_name") == doc_name:
+	item_code = doc.get("item_code")
+	response = lazada_manager.client.get_products(
+		{
+			"SkuSellerList": item_code,
+		},
+		0,
+		20,
+	)
+	items = response.get("data").get("products")
+	for item in items:
+		if item.get("SellerSku") == item_code:
 			message = _("Website Item already exists against {0}").format(
 				frappe.bold(doc.get("item_code"))
 			)
+
 			frappe.throw(message, title=_("Already Published"))
 
 	price = 0
 	item_price_list = frappe.get_list(
 		"Item Price",
-		filters={"item_code": doc.get("item_code")},
+		filters={"item_code": item_code},
 		fields=["price_list_rate"],
 	)
+	
 	if item_price_list:
 		price = item_price_list[0].get("price_list_rate")
-
-	fields_to_map = {
-		"item_name": "item_name",
-		"description": "description",
-		"has_models": "has_varients",
-		"item_code": "item_sku",
-	}
-
-	shopee_item = frappe.new_doc("Shopee Item")
-	shopee_item.item_name = doc_name
-	shopee_item.name = "temp_" + frappe.generate_hash(length=10)
-	shopee_item.original_price = price
 	
-	for shopee_item_field, webshop_field in fields_to_map.items():
-		shopee_item.update({shopee_item_field: doc.get(webshop_field)})
+	fields_to_map = {
+		"description": "description",
+	}
+	
+	lazada_item = frappe.new_doc("Lazada Item")
+	lazada_item.product_name = doc.get("item_name")
+	lazada_item.name = "temp_" + frappe.generate_hash(length=10)
+	lazada_item.description = doc.get("description")
+	sku = {
+		"seller_sku": item_code,
+		"price": price
+	}
+	lazada_item.append("skus", sku)
+	
+	# for lazada_field, webshop_field in fields_to_map.items():
+	#     lazada_item.update({lazada_field, doc.get(webshop_field)})
+	
+	print("Here:", lazada_item.as_dict())
+	return lazada_item.as_dict()
 
-	return shopee_item.as_dict()
+
+# @frappe.whitelist()
+# def make_shopee_item(doc, save=True):
+#     if not doc:
+#         return
+
+#     if isinstance(doc, str):
+#         doc = json.loads(doc)
+
+#     doc_name = doc.get("item_name")
+
+#     filter = {
+#         "item_name": doc_name,
+#         "status": ["NORMAL", "BANNED", "UNLIST", "REVIEWING"],
+#     }
+#     searched_product = shopee_manager.search_products(filter)
+
+#     for _item_id, value in searched_product.items():
+#         if value.get("item_name") == doc_name:
+#             message = _("Website Item already exists against {0}").format(
+#                 frappe.bold(doc.get("item_code"))
+#             )
+#             frappe.throw(message, title=_("Already Published"))
+
+#     price = 0
+#     item_price_list = frappe.get_list(
+#         "Item Price",
+#         filters={"item_code": doc.get("item_code")},
+#         fields=["price_list_rate"],
+#     )
+#     if item_price_list:
+#         price = item_price_list[0].get("price_list_rate")
+
+#     fields_to_map = {
+#         "description": "description",
+#         "has_models": "has_varients",
+#         "item_code": "item_sku",
+#     }
+
+#     shopee_item = frappe.new_doc("Shopee Item")
+#     shopee_item.item_name = doc_name
+#     shopee_item.name = "temp_" + frappe.generate_hash(length=10)
+#     shopee_item.original_price = price
+
+#     for shopee_item_field, webshop_field in fields_to_map.items():
+#         shopee_item.update({shopee_item_field: doc.get(webshop_field)})
+
+#     return shopee_item.as_dict()

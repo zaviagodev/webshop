@@ -98,6 +98,17 @@ def add_custom_fields():
 				"label": "Published In Website",
 				"read_only": 1,
 				"no_copy": 1,
+			},
+         	{
+				"default": 0,
+				"depends_on": "published_on_lazada",
+				"fieldname": "published_on_lazada",
+				"fieldtype": "Check",
+				"ignore_user_permissions": 1,
+				"insert_after": "default_manufacturer_part_no",
+				"label": "Published In Website",
+				"read_only": 1,
+				"no_copy": 1,
 			}
 		],
 		"Item Group": [

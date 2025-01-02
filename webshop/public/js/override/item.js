@@ -1,5 +1,24 @@
 frappe.ui.form.on("Item", {
 	refresh: function (frm) {
+		if (!frm.doc.published_on_lazada) {
+			frm.add_custom_button(__("Publish on Lazada"), function() {
+				frappe.call({
+					method: "webshop.webshop.doctype.website_item.website_item.make_lazada_item",
+					args: {
+						doc: frm.doc,
+					},
+					freeze: true,
+					freeze_message: __("Creating Product on Lazada"),
+					callback: function(response) {
+
+						if(response.message) {
+							localStorage.setItem("temp_lazada_item", JSON.stringify(response.message))
+							frappe.set_route('Form', 'Lazada Item', response.message.name);
+						}
+					}
+				})
+			}, __('Actions'));
+		}
 		if (!frm.doc.publisehd_in_shopee) {
 			frm.add_custom_button(__("Publish on Shopee"), function() {
 				frappe.call({
