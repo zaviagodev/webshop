@@ -3,14 +3,13 @@ frappe.ui.form.on("Item", {
 		if (!frm.doc.published_on_lazada) {
 			frm.add_custom_button(__("Publish on Lazada"), function() {
 				frappe.call({
-					method: "webshop.webshop.doctype.website_item.website_item.make_lazada_item",
+					method: "marketplace_integration.marketplace_integration.doctype.lazada_item.lazada_item.make_lazada_item",
 					args: {
 						doc: frm.doc,
 					},
 					freeze: true,
 					freeze_message: __("Creating Product on Lazada"),
 					callback: function(response) {
-
 						if(response.message) {
 							localStorage.setItem("temp_lazada_item", JSON.stringify(response.message))
 							frappe.set_route('Form', 'Lazada Item', response.message.name);
@@ -22,30 +21,17 @@ frappe.ui.form.on("Item", {
 		if (!frm.doc.publisehd_in_shopee) {
 			frm.add_custom_button(__("Publish on Shopee"), function() {
 				frappe.call({
-					method: "webshop.webshop.doctype.website_item.website_item.make_shopee_item",
+					method: "marketplace_integration.marketplace_integration.doctype.shopee_item.shopee_item.make_shopee_item",
 					args: {
 						doc: frm.doc,
 					},
 					freeze: true,
 					freeze_message: __("Creating Product on Shopee"),
 					callback: function(response) {
-
 						if(response.message) {
-							frappe.msgprint(__("New Shopee Item Being created: ") + response.item_name);
 							localStorage.setItem("temp_shopee_item", JSON.stringify(response.message))
-							console.log("Being routed to another page");
 							frappe.set_route('Form', 'Shopee Item', response.message.name);
 						}
-						// frappe.msgprint({
-						// 	message: __("Website Item {0} has been created.",
-						// 		[repl('<a href="app/website-item/%(item_encoded)s" class="strong">%(item)s</a>',{
-						// 			item_encoded: encodeURIComponent(result.message[0]),
-						// 			item: result.message[1]
-						// 		})]
-						// 	),
-						// 	title: __("Published"),
-						// 	indicator: "green"
-						// })
 					}
 				})
 			}, __('Actions'));
