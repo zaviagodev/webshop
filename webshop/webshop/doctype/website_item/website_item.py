@@ -33,11 +33,6 @@ from webshop.webshop.variant_selector.item_variants_cache import (
 )
 from webshop.webshop.doctype.website_item.custom_website_item import CustomWebSiteItem
 
-from marketplace_integration.marketplace.shopee_manager.manager_proxy import (
-	shopee_manager,
-)
-from marketplace_integration.marketplace.lazada_manager import lazada_manager
-
 
 class WebsiteItem(WebsiteGenerator, CustomWebSiteItem):
 	website = frappe._dict(
