@@ -3,9 +3,12 @@
 # For license information, please see license.txt
 
 import json
+import requests
 
 import frappe
 from frappe.utils import cint
+from secrets import SystemRandom
+from werkzeug.wrappers import Response
 
 from webshop.webshop.product_data_engine.filters import ProductFiltersBuilder
 from webshop.webshop.product_data_engine.query import ProductQuery
@@ -22,9 +25,11 @@ from frappe.utils import (
     escape_html,
 )
 from webshop.webshop.shopping_cart.cart import (_get_cart_quotation)
-from frappe.utils import nowdate, nowtime, cint
+from frappe.utils import nowdate, nowtime, cint, validate_phone_number_with_country_code
 from frappe.handler import upload_file
+from frappe.core.doctype.sms_settings.sms_settings import send_sms
 
+HOST = "https://control.msg91.com"
 
 @frappe.whitelist(allow_guest=True)
 def get_product_filter_data(query_args=None):
@@ -374,3 +379,71 @@ def confirm_payment(invoice_name, payment_info):
 @frappe.whitelist(allow_guest=True)
 def get_config():
     return frappe.get_doc("Webshop Settings")
+
+
+def api_response(response_type, status_code, message):
+    return Response(
+        response=json.dumps({"type": response_type, "message": message}),
+        status=status_code,
+        mimetype="application/json"
+    )
+
+def validate_phone_no(phone_no):
+    return len(phone_no) == 10 and (phone_no.startswith("06") or phone_no.startswith("08") or phone_no.startswith("09"))
+
+@frappe.whitelist(allow_guest=False)
+def request_otp(phone_no: str):
+
+    if not phone_no:
+        return api_response("error", 400, "Phone no is missing")
+    
+    if not validate_phone_no(phone_no):
+        return api_response("error", 400, "Phone no is invalid, it should starts with 06, 08 or 09, and it should be 10 digits long")
+
+    sys_random = SystemRandom()
+    
+    otp = sys_random.randint(100000, 999999)
+    frappe.cache().set_value(
+        f"phone_verification_otp:{phone_no}", otp, expires_in_sec=60 * 10
+    )
+
+    message = f"Your OTP for phone verification is {otp}"
+    try:
+        send_sms([phone_no], message)
+        return api_response("success", 200, "OTP successfully sent.")
+    except Exception as e:
+        return api_response("error", 500, "Failed to send OTP, Please contact support")
+
+
+@frappe.whitelist(allow_guest=True)
+def verify_otp(phone_no: str, otp: str):
+
+    if not otp:
+        return api_response("error", 400 , "OTP is required.")
+
+    if not phone_no:
+        return api_response("error", 400, "Phone no is required.")
+
+
+    if not validate_phone_no(phone_no):
+        return api_response("error", 400, "Phone no is invalid, it should starts with 06, 08 or 09, and it should be 10 digits long")
+
+    otp_key = f"phone_verification_otp:{phone_no}"
+    cached_otp = frappe.cache().get_value(otp_key)
+
+    if not cached_otp:
+        return api_response("error", 400, "OTP has expired.")
+
+    if cached_otp != int(otp):
+        return api_response("error", 400, "OTP is invalid.")
+    
+    # Delete it after using it, so it can't be used more than once
+    frappe.cache().delete_key(otp_key)
+
+    user_name = frappe.session.user
+    user_doc = frappe.get_doc("User", user_name)
+    user_doc.phone = phone_no
+    user_doc.save(ignore_permissions=True)
+
+    return api_response("success", 200, "Phone no has been verified")
+
