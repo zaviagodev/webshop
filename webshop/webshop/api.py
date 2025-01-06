@@ -374,3 +374,7 @@ def confirm_payment(invoice_name, payment_info):
 @frappe.whitelist(allow_guest=True)
 def get_config():
     return frappe.get_doc("Webshop Settings")
+
+@frappe.whitelist()
+def is_marketplace_integrated():
+    return "marketplace_integration" in frappe.get_installed_apps()
